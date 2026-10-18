@@ -5,9 +5,11 @@ import { bootPipeline, enqueueDownload } from "../../src/jobs/pipelineBoot.ts";
 import { Scheduler } from "../../src/jobs/scheduler.ts";
 import { resolveThumbnail, variantFromUrl } from "../../src/media/thumbnails.ts";
 import {
+  activityKinds,
   addMediaFile,
   addVideo,
   createHarness,
+  makeCtx,
   mediaRows,
   setEffective,
   VIDEO_ID,
@@ -42,6 +44,20 @@ describe("bootPipeline", () => {
       ["reap_hourly", 3_600_000],
       ["move_scan", 600_000],
     ]);
+  });
+
+  it("routes every registered type to its handler", async () => {
+    bootPipeline(h.deps);
+    h.settings = { ...h.settings, "canary.max_per_hour": 1 };
+    h.deps.fetch = () => Promise.resolve(new Response("", { status: 200 }));
+    for (const type of ["transcode", "move", "reap", "action:reap-now", "canary"]) {
+      const test = makeCtx(h, {
+        type,
+        videoId: type === "transcode" || type === "move" ? VIDEO_ID : null,
+      });
+      await h.registry.get(type)?.handler(test.ctx);
+    }
+    expect(activityKinds(h.db)).toContain("canary.ok");
   });
 
   it("schedules reaps and moves", () => {
