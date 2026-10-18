@@ -66,6 +66,17 @@ describe("/s with the built bundle", () => {
     }
   });
 
+  it("serves the static privacy and terms pages with 200", async () => {
+    const app = (await withBundle()).app;
+    for (const url of ["/s/privacy", "/s/tos"]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toContain("text/html");
+      expect(response.body).toContain("Cellar");
+    }
+    expectUnknownTokenPage(await app.inject({ method: "GET", url: "/s/privacy/x" }), SHARE_HTML);
+  });
+
   it("answers HEAD the same way", async () => {
     const app = (await withBundle()).app;
     const response = await app.inject({ method: "HEAD", url: "/s/abc" });

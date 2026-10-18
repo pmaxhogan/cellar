@@ -4,6 +4,7 @@ import fastifyRateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Config } from "../config.ts";
+import { PRIVACY_HTML, TOS_HTML } from "./legalPages.ts";
 
 /**
  * The public share surface, mounted at /s (one of the two prefixes Cloudflare
@@ -131,6 +132,17 @@ export const sharePlugin: FastifyPluginAsync<SharePluginOptions> = async (app, o
     }
     throw error;
   });
+
+  // Static legal pages the Google OAuth consent screen links to. They are the
+  // only /s paths that answer 200 without a token; they carry no data.
+  const sendLegal = (reply: FastifyReply, body: string): FastifyReply =>
+    reply
+      .code(200)
+      .header("content-type", "text/html; charset=utf-8")
+      .header("cache-control", "public, max-age=3600")
+      .send(body);
+  app.get("/privacy", (_request, reply) => sendLegal(reply, PRIVACY_HTML));
+  app.get("/tos", (_request, reply) => sendLegal(reply, TOS_HTML));
 
   app.get("/", (_request, reply) => sendUnknown(reply));
   app.get("/*", (_request, reply) => sendUnknown(reply));
