@@ -13,6 +13,7 @@ import { registerRuleHandlers, registerRuleSchedules } from "./jobs/handlers/eva
 import { jobRegistry } from "./jobs/types.ts"; // wave2B
 import { bootPipeline } from "./jobs/pipelineBoot.ts"; // wave3
 import { createPipelineDeps } from "./jobs/pipelineWiring.ts"; // wave3
+import { bootIngestion } from "./jobs/ingestBoot.ts"; // wave2A
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -74,6 +75,13 @@ async function main(): Promise<void> {
   // modules and to the scheduler's queue and schedules (jobs/pipelineWiring.ts).
   bootPipeline(createPipelineDeps({ config, db, log, events, scheduler }));
   // --- end wave3 boot ---
+
+  // --- wave2A boot ---
+  // Ingestion and recheck handlers, schedules and action:ingest-now. The returned budget
+  // hooks (budgetOk, canConsumeScrape) belong in bootScheduler's deps; wiring them there
+  // is the orchestrator's change to the wave1B block.
+  bootIngestion({ config, db, log: log.child({ mod: "ingest" }), events, scheduler });
+  // --- end wave2A boot ---
 
   const reminder = config.insecureMode
     ? setInterval(() => {
