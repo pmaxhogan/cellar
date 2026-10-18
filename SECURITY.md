@@ -139,14 +139,16 @@ The Custom App ([`deploy/docker-compose.nas.yml`](deploy/docker-compose.nas.yml)
   user (568) and other local users cannot read cellar's files, and cellar cannot read
   theirs.
 - `cap_drop: [ALL]` with nothing added back, and `no-new-privileges:true`.
-- **`read_only: true` root filesystem** with a size-limited `tmpfs` on `/tmp`. This
-  was verified to work together with the nvidia runtime and `cap_drop ALL` on this NAS.
-  The only writable places are `/tmp`, `/data` and the `/media` mounts.
+- **`read_only: true` root filesystem** with a size-limited, `noexec` `tmpfs` on `/tmp`
+  and one small executable `tmpfs` at `/run/ytdlp` (`TMPDIR`), because the single-file
+  yt-dlp build unpacks itself into its temp dir on every run. This was verified to work
+  together with the nvidia runtime and `cap_drop ALL`. The only writable places are
+  `/tmp`, `/run/ytdlp`, `/data` and the `/media` mounts.
 - **No published ports.** The Cloudflare tunnel reaches the service over the internal
   app network by its DNS alias; nothing listens on the NAS's LAN address for cellar.
 - The **bgutil PO-token sidecar is internal only** (no ports, reachable by name from
-  the cellar container). It also runs `cap_drop ALL` and `no-new-privileges`; it runs as
-  the image's default user and is not read-only.
+  the cellar container). It also runs `cap_drop ALL` and `no-new-privileges`, as the
+  same non-root uid, with a read-only root filesystem and its own small `tmpfs`.
 - GPU access is a device reservation, not `privileged`.
 - Logs are `json-file`, 20 MB by 3 files.
 

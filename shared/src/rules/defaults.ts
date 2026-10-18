@@ -4,7 +4,8 @@ import type { RuleDuration } from "./time.ts";
 import { RuleDraftSchema, type RuleDraft } from "./rule.ts";
 
 /**
- * The default rule set (spec 4.5), installed by migration at first init. All
+ * The default rule set (spec 4.5), installed by the server at first boot behind a
+ * kv flag (never re-seeded). All
  * rules are editable and removable. Position ascending = priority ascending;
  * the global rule has position 0.
  *

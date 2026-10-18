@@ -43,7 +43,8 @@ RUN apt-get update \
 # yt-dlp: the standalone yt-dlp_linux build (PyInstaller onefile, so no python
 # in the image), verified against the release's SHA2-256SUMS. A onefile build
 # unpacks itself into $TMPDIR (default /tmp) on every run, so /tmp must stay
-# writable and must not be mounted noexec.
+# writable and executable: the compose file sets TMPDIR to a dedicated exec
+# tmpfs (/run/ytdlp) while /tmp itself stays noexec.
 RUN set -eux; \
   mkdir -p /opt/cellar/bin /tmp/ytdlp; \
   cd /tmp/ytdlp; \
