@@ -6,3 +6,4 @@ export * from "./evaluate.ts";
 export * from "./rule.ts";
 export * from "./merge.ts";
 export * from "./nextFlip.ts";
+export * from "./defaults.ts";
