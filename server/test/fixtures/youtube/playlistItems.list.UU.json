@@ -1,0 +1,172 @@
+{
+  "kind": "youtube#playlistItemListResponse",
+  "etag": "B6BOsf5dV58BLjU8XRqh8EkeB3s",
+  "items": [
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "Uc95qPWh9gLFM+x8zilddYrbOAM",
+      "id": "u7zbilNNPBOxEvjDWZHw2ixQLlNJjmZG-qG7mmHa",
+      "snippet": {
+        "publishedAt": "2017-10-16T15:00:03Z",
+        "channelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "title": "Gradient descent, how neural networks learn | Deep Learning Chapter 2",
+        "description": "Synthetic description for Gradient descent, how neural networks learn | Deep Learning Chapter 2.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/IHZwWFHWa-w/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/IHZwWFHWa-w/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/IHZwWFHWa-w/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/IHZwWFHWa-w/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/IHZwWFHWa-w/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "3Blue1Brown",
+        "videoOwnerChannelTitle": "3Blue1Brown",
+        "videoOwnerChannelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "playlistId": "UUYO_jab_esuFRV4b17AJtAw",
+        "position": 0,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "IHZwWFHWa-w"
+        }
+      },
+      "contentDetails": {
+        "videoId": "IHZwWFHWa-w",
+        "videoPublishedAt": "2017-10-16T15:00:03Z"
+      },
+      "status": {
+        "privacyStatus": "public"
+      }
+    },
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "4gNl+g+nsCQ/jRnAOFol/DcFNjo",
+      "id": "C71CP8FZE5rrFi2SYL6AAQ1UbldbxzmIESJ-kVIn",
+      "snippet": {
+        "publishedAt": "2017-10-05T14:00:12Z",
+        "channelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "title": "But what is a neural network? | Deep learning chapter 1",
+        "description": "Synthetic description for But what is a neural network? | Deep learning chapter 1.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "3Blue1Brown",
+        "videoOwnerChannelTitle": "3Blue1Brown",
+        "videoOwnerChannelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "playlistId": "UUYO_jab_esuFRV4b17AJtAw",
+        "position": 1,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "aircAruvnKk"
+        }
+      },
+      "contentDetails": {
+        "videoId": "aircAruvnKk",
+        "videoPublishedAt": "2017-10-05T14:00:12Z"
+      },
+      "status": {
+        "privacyStatus": "public"
+      }
+    },
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "Zxg2ZbTq0lMiCmDNHbmBEELRsI4",
+      "id": "e2R0M3Mf1TuKjF-N0Uw4wPubYX45jXXPz6aRC6AY",
+      "snippet": {
+        "publishedAt": "2017-04-29T15:41:20Z",
+        "channelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "title": "The essence of calculus | Chapter 1",
+        "description": "Synthetic description for The essence of calculus | Chapter 1.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "3Blue1Brown",
+        "videoOwnerChannelTitle": "3Blue1Brown",
+        "videoOwnerChannelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "playlistId": "UUYO_jab_esuFRV4b17AJtAw",
+        "position": 2,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "WUvTyaaNkzM"
+        }
+      },
+      "contentDetails": {
+        "videoId": "WUvTyaaNkzM",
+        "videoPublishedAt": "2017-04-29T15:41:20Z"
+      },
+      "status": {
+        "privacyStatus": "public"
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 3,
+    "resultsPerPage": 50
+  }
+}

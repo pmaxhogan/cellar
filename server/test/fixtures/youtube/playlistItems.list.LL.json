@@ -1,0 +1,265 @@
+[
+  {
+    "kind": "youtube#playlistItemListResponse",
+    "etag": "ZufV4YWcpflNWQcTybzIO+Q95rM",
+    "nextPageToken": "EAAaBlBUOkNBVQ",
+    "items": [
+      {
+        "kind": "youtube#playlistItem",
+        "etag": "xCHgtBPF4mVDmGS3zW0SJIrQlwY",
+        "id": "cqiuFcuDZug5Xn-982WO17mhbaiTfZIVNtGcGfKt",
+        "snippet": {
+          "publishedAt": "2026-10-17T21:14:05Z",
+          "channelId": "UCFakeAccountChannel0001",
+          "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+          "description": "Synthetic description for Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster).",
+          "thumbnails": {
+            "default": {
+              "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
+              "width": 120,
+              "height": 90
+            },
+            "medium": {
+              "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+            },
+            "high": {
+              "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+            },
+            "standard": {
+              "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg",
+              "width": 640,
+              "height": 480
+            },
+            "maxres": {
+              "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+              "width": 1280,
+              "height": 720
+            }
+          },
+          "channelTitle": "Fake Account",
+          "videoOwnerChannelTitle": "Rick Astley",
+          "videoOwnerChannelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
+          "playlistId": "LL",
+          "position": 0,
+          "resourceId": {
+            "kind": "youtube#video",
+            "videoId": "dQw4w9WgXcQ"
+          }
+        },
+        "contentDetails": {
+          "videoId": "dQw4w9WgXcQ",
+          "videoPublishedAt": "2009-10-25T06:57:33Z"
+        },
+        "status": {
+          "privacyStatus": "public"
+        }
+      },
+      {
+        "kind": "youtube#playlistItem",
+        "etag": "TqMtQ6tJ0ck1cVUSihUZAKzaXd4",
+        "id": "N5DUv882UJflrvrStiRf9yHMOQP90ubcIRmFnGgS",
+        "snippet": {
+          "publishedAt": "2026-10-12T08:02:41Z",
+          "channelId": "UCFakeAccountChannel0001",
+          "title": "Me at the zoo",
+          "description": "Synthetic description for Me at the zoo.",
+          "thumbnails": {
+            "default": {
+              "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/default.jpg",
+              "width": 120,
+              "height": 90
+            },
+            "medium": {
+              "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+            },
+            "high": {
+              "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+            },
+            "standard": {
+              "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/sddefault.jpg",
+              "width": 640,
+              "height": 480
+            },
+            "maxres": {
+              "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/maxresdefault.jpg",
+              "width": 1280,
+              "height": 720
+            }
+          },
+          "channelTitle": "Fake Account",
+          "videoOwnerChannelTitle": "jawed",
+          "videoOwnerChannelId": "UC4QobU6STFB0P71PMvOGN5A",
+          "playlistId": "LL",
+          "position": 1,
+          "resourceId": {
+            "kind": "youtube#video",
+            "videoId": "jNQXAC9IVRw"
+          }
+        },
+        "contentDetails": {
+          "videoId": "jNQXAC9IVRw",
+          "videoPublishedAt": "2005-04-24T03:31:52Z"
+        },
+        "status": {
+          "privacyStatus": "public"
+        }
+      },
+      {
+        "kind": "youtube#playlistItem",
+        "etag": "94VTGAwEuGrCITdKgAjJ14ixQ80",
+        "id": "bbqbEnMKmbJX_rWC2BCNaDTlH4QcxRzuDYMxC6CJ",
+        "snippet": {
+          "publishedAt": "2026-09-30T19:45:10Z",
+          "channelId": "UCFakeAccountChannel0001",
+          "title": "But what is a neural network? | Deep learning chapter 1",
+          "description": "Synthetic description for But what is a neural network? | Deep learning chapter 1.",
+          "thumbnails": {
+            "default": {
+              "url": "https://i.ytimg.com/vi/aircAruvnKk/default.jpg",
+              "width": 120,
+              "height": 90
+            },
+            "medium": {
+              "url": "https://i.ytimg.com/vi/aircAruvnKk/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+            },
+            "high": {
+              "url": "https://i.ytimg.com/vi/aircAruvnKk/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+            },
+            "standard": {
+              "url": "https://i.ytimg.com/vi/aircAruvnKk/sddefault.jpg",
+              "width": 640,
+              "height": 480
+            },
+            "maxres": {
+              "url": "https://i.ytimg.com/vi/aircAruvnKk/maxresdefault.jpg",
+              "width": 1280,
+              "height": 720
+            }
+          },
+          "channelTitle": "Fake Account",
+          "videoOwnerChannelTitle": "3Blue1Brown",
+          "videoOwnerChannelId": "UCYO_jab_esuFRV4b17AJtAw",
+          "playlistId": "LL",
+          "position": 2,
+          "resourceId": {
+            "kind": "youtube#video",
+            "videoId": "aircAruvnKk"
+          }
+        },
+        "contentDetails": {
+          "videoId": "aircAruvnKk",
+          "videoPublishedAt": "2017-10-05T14:00:12Z"
+        },
+        "status": {
+          "privacyStatus": "public"
+        }
+      }
+    ],
+    "pageInfo": {
+      "totalResults": 5,
+      "resultsPerPage": 3
+    }
+  },
+  {
+    "kind": "youtube#playlistItemListResponse",
+    "etag": "jmanXC6vcMxnLrQmxEi/KOuA+VI",
+    "prevPageToken": "EAEaBlBUOkNBVQ",
+    "items": [
+      {
+        "kind": "youtube#playlistItem",
+        "etag": "Jp3VJtn921yOh8SZzLKmwZuHUX0",
+        "id": "EnqdxsHsM_z6FS3hQ4ixFX562glHV4z9yQvIRVte",
+        "snippet": {
+          "publishedAt": "2026-08-03T11:20:33Z",
+          "channelId": "UCFakeAccountChannel0001",
+          "title": "The essence of calculus | Chapter 1",
+          "description": "Synthetic description for The essence of calculus | Chapter 1.",
+          "thumbnails": {
+            "default": {
+              "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/default.jpg",
+              "width": 120,
+              "height": 90
+            },
+            "medium": {
+              "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+            },
+            "high": {
+              "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+            },
+            "standard": {
+              "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/sddefault.jpg",
+              "width": 640,
+              "height": 480
+            },
+            "maxres": {
+              "url": "https://i.ytimg.com/vi/WUvTyaaNkzM/maxresdefault.jpg",
+              "width": 1280,
+              "height": 720
+            }
+          },
+          "channelTitle": "Fake Account",
+          "videoOwnerChannelTitle": "3Blue1Brown",
+          "videoOwnerChannelId": "UCYO_jab_esuFRV4b17AJtAw",
+          "playlistId": "LL",
+          "position": 3,
+          "resourceId": {
+            "kind": "youtube#video",
+            "videoId": "WUvTyaaNkzM"
+          }
+        },
+        "contentDetails": {
+          "videoId": "WUvTyaaNkzM",
+          "videoPublishedAt": "2017-04-29T15:41:20Z"
+        },
+        "status": {
+          "privacyStatus": "public"
+        }
+      },
+      {
+        "kind": "youtube#playlistItem",
+        "etag": "xSjH+Q0kVHdAIsjN5hy7KNC/4YI",
+        "id": "qys-3eRGoFt1Q04RrpUrAPzEFgtW6WdAqOs1nEXu",
+        "snippet": {
+          "publishedAt": "2026-07-19T16:05:59Z",
+          "channelId": "UCFakeAccountChannel0001",
+          "title": "Deleted video",
+          "description": "This video is unavailable.",
+          "thumbnails": {},
+          "channelTitle": "Fake Account",
+          "playlistId": "LL",
+          "position": 4,
+          "resourceId": {
+            "kind": "youtube#video",
+            "videoId": "pRiVaTe0001"
+          }
+        },
+        "contentDetails": {
+          "videoId": "pRiVaTe0001"
+        },
+        "status": {
+          "privacyStatus": "private"
+        }
+      }
+    ],
+    "pageInfo": {
+      "totalResults": 5,
+      "resultsPerPage": 3
+    }
+  }
+]
