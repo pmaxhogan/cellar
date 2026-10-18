@@ -37,13 +37,15 @@ interface AccountDbRow {
   channel_id: string | null;
   status: string;
   has_cookies: number;
+  scrape_budget_per_hour: number | null;
   last_api_ok_at: number | null;
   last_cookie_ok_at: number | null;
   created_at: number;
 }
 
 const SELECT_ACCOUNT = `
-  SELECT a.id, a.label, a.email, a.channel_id, a.status, a.last_api_ok_at,
+  SELECT a.id, a.label, a.email, a.channel_id, a.status, a.scrape_budget_per_hour,
+         a.last_api_ok_at,
          a.last_cookie_ok_at, a.created_at,
          EXISTS (SELECT 1 FROM account_secrets s
                  WHERE s.account_id = a.id AND s.kind = 'cookies') AS has_cookies
@@ -57,6 +59,8 @@ function toRow(row: AccountDbRow): AccountRow {
     channel_id: row.channel_id,
     status: normalizeStatus(row.status),
     has_cookies: Number(row.has_cookies) === 1,
+    scrape_budget_per_hour:
+      row.scrape_budget_per_hour === null ? null : Number(row.scrape_budget_per_hour),
     last_api_ok_at: row.last_api_ok_at === null ? null : Number(row.last_api_ok_at),
     last_cookie_ok_at: row.last_cookie_ok_at === null ? null : Number(row.last_cookie_ok_at),
     created_at: Number(row.created_at),
@@ -95,7 +99,8 @@ export interface AccountUpdate {
 
 /**
  * Edit an account. Resuming (`pending`) recomputes the status from the stored
- * credentials, so an account with a valid grant and jar comes back as `ok`.
+ * credentials, so an account with a valid grant and jar comes back as `ok`;
+ * `auth_lost` and `cookies_invalid` stay until the credential is replaced.
  */
 export function updateAccount(
   db: Db,
@@ -122,7 +127,14 @@ export function updateAccount(
       );
     }
     if (patch.status !== undefined) {
-      const status = patch.status === "disabled" ? "disabled" : derivedStatus(db, id);
+      const current = getAccount(db, id).status;
+      // Resuming never clears a credential failure; only a new grant or jar does.
+      const status =
+        patch.status === "disabled"
+          ? "disabled"
+          : current === "auth_lost" || current === "cookies_invalid"
+            ? current
+            : derivedStatus(db, id);
       db.run("UPDATE accounts SET status = ?, updated_at = ? WHERE id = ?", status, now, id);
     }
   });

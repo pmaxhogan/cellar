@@ -87,7 +87,9 @@ export function updateSettings(
   const before = load(db).sparse;
   const result = applySettingsPatch(before, patch);
   if (!result.ok) {
-    throw invalid("Invalid settings.", { fields: result.errors });
+    // `fields` matches the other routes; `errors` is the flat key -> message map the
+    // Settings page reads.
+    throw invalid("Invalid settings.", { fields: result.errors, errors: result.errors });
   }
   const after = result.sparse as Record<string, unknown>;
   db.tx(() => {

@@ -91,7 +91,7 @@ describe("accounts CRUD", () => {
       payload: { label: "Renamed", scrape_budget_per_hour: 10 },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ label: "Renamed" });
+    expect(res.json()).toMatchObject({ label: "Renamed", scrape_budget_per_hour: 10 });
     expect(
       temp.db.get<{ b: number }>(
         "SELECT scrape_budget_per_hour AS b FROM accounts WHERE id = ?",
@@ -105,6 +105,7 @@ describe("accounts CRUD", () => {
       payload: { scrape_budget_per_hour: null },
     });
     expect(res.statusCode).toBe(200);
+    expect(AccountRowSchema.parse(res.json()).scrape_budget_per_hour).toBeNull();
 
     res = await temp.app.inject({ method: "DELETE", url: `/api/accounts/${String(row.id)}` });
     expect(res.statusCode).toBe(204);
@@ -156,6 +157,15 @@ describe("accounts CRUD", () => {
       payload: { status: "pending" },
     });
     expect(res.json().status).toBe("ok");
+
+    // A credential failure survives a resume.
+    temp.db.run("UPDATE accounts SET status = 'cookies_invalid' WHERE id = ?", id);
+    res = await temp.app.inject({
+      method: "PUT",
+      url: `/api/accounts/${String(id)}`,
+      payload: { status: "pending" },
+    });
+    expect(res.json().status).toBe("cookies_invalid");
   });
 
   it("validates bodies and ids", async () => {

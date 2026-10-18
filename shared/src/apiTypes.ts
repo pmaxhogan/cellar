@@ -149,6 +149,8 @@ export const AccountRowSchema = z.object({
   channel_id: z.string().nullable(),
   status: z.enum(["pending", "ok", "auth_lost", "cookies_invalid", "disabled"]),
   has_cookies: z.boolean(),
+  /** null = the global quota.scrape_requests_per_hour applies. */
+  scrape_budget_per_hour: z.number().int().nonnegative().nullable(),
   last_api_ok_at: z.number().int().nullable(),
   last_cookie_ok_at: z.number().int().nullable(),
   created_at: z.number().int(),

@@ -134,6 +134,7 @@ describe("settings routes", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ code: "invalid", details: { fields: {} } });
+    expect(res.json().details.errors).toHaveProperty("download.concurrency");
 
     res = await temp.app.inject({
       method: "PUT",
