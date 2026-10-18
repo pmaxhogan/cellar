@@ -146,6 +146,23 @@ describe("RulesPage: ordering", () => {
     await flush();
     expect(names(wrapper)).toEqual(before);
   });
+
+  it("keeps the global rule when the order response lists only custom rules", async () => {
+    const fake = pageApi();
+    fake.on("PUT /api/rules/order", (call: { body: unknown }) => ({
+      rows: renumbered(defaultRows(), (call.body as { ids: number[] }).ids).filter(
+        (row) => row.kind === "custom",
+      ),
+    }));
+    const wrapper = await mountPage(fake);
+    await wrapper
+      .findAll("[data-test='custom-rule']")[0]!
+      .find("[data-test='rule-down']")
+      .trigger("click");
+    await flush();
+    expect(wrapper.find("[data-test='global-rule']").exists()).toBe(true);
+    expect(names(wrapper)[0]).toBe("Expire: watched after 2 months");
+  });
 });
 
 describe("RulesPage: mutations", () => {

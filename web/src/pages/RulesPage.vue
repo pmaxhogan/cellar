@@ -152,7 +152,11 @@ async function move(from: number, to: number): Promise<void> {
       api,
       ordered.map((row) => row.id),
     );
-    if (saved.length > 0) rows.value = saved;
+    // The response may carry only the custom rules; keep the global rule then.
+    const others = saved.some((row) => row.kind === "global")
+      ? []
+      : rows.value.filter((row) => row.kind !== "custom");
+    if (saved.length > 0) rows.value = [...others, ...saved];
   } catch (cause) {
     rows.value = before;
     toast.failure("Could not save the new order", cause);
