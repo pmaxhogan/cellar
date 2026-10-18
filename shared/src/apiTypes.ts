@@ -372,3 +372,113 @@ export const NotifyResultSchema = z.discriminatedUnion("sent", [
 ]);
 export type NotifyResult = z.infer<typeof NotifyResultSchema>;
 // --- end wave1B ---
+// --- wave1C ---
+// ---------------------------------------------------------------------------
+// Self-check (/api/checks) and tool updates (/api/tools).
+//   GET  /api/checks?limit=N  -> ChecksListResponse (newest first, limit <= 200, default 20)
+//   GET  /api/checks/latest   -> LatestCheckResponse
+//   POST /api/checks/run      -> CheckRow (trigger "manual")
+//   GET  /api/tools           -> ToolsResponse
+//   POST /api/tools/update    <- ToolUpdateRequest   -> ToolsResponse (with outcomes)
+//   POST /api/tools/rollback  <- ToolRollbackRequest -> ToolsResponse
+// ---------------------------------------------------------------------------
+export const CHECK_LEVELS = ["ok", "warn", "fail", "skip"] as const;
+export const CheckLevelSchema = z.enum(CHECK_LEVELS);
+export type CheckLevel = z.infer<typeof CheckLevelSchema>;
+
+export const CHECK_TRIGGERS = ["boot", "schedule", "manual"] as const;
+export const CheckTriggerSchema = z.enum(CHECK_TRIGGERS);
+export type CheckTrigger = z.infer<typeof CheckTriggerSchema>;
+
+export const CheckResultSchema = z.object({
+  /** Stable machine key, e.g. `data.free_space` or `location.1.writable`. */
+  key: z.string(),
+  label: z.string(),
+  level: CheckLevelSchema,
+  detail: z.string(),
+  /** A headline measurement (free bytes, a version string, skew ms). */
+  value: z.union([z.string(), z.number()]).optional(),
+  took_ms: z.number().int().nonnegative(),
+});
+export type CheckResult = z.infer<typeof CheckResultSchema>;
+
+export const CheckRowSchema = z.object({
+  id: z.number().int(),
+  run_at: z.number().int(),
+  trigger: CheckTriggerSchema,
+  /** True when no result is at level `fail`. */
+  ok: z.boolean(),
+  results: z.array(CheckResultSchema),
+});
+export type CheckRow = z.infer<typeof CheckRowSchema>;
+
+export const ChecksQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(20),
+});
+export type ChecksQuery = z.infer<typeof ChecksQuerySchema>;
+
+export const ChecksListResponseSchema = z.object({ rows: z.array(CheckRowSchema) });
+export type ChecksListResponse = z.infer<typeof ChecksListResponseSchema>;
+
+export const LatestCheckResponseSchema = z.object({ row: CheckRowSchema.nullable() });
+export type LatestCheckResponse = z.infer<typeof LatestCheckResponseSchema>;
+
+export const UPDATABLE_TOOLS = ["ytdlp", "ffmpeg"] as const;
+export const UpdatableToolSchema = z.enum(UPDATABLE_TOOLS);
+export type UpdatableTool = z.infer<typeof UpdatableToolSchema>;
+
+/**
+ * One tool's update state. For yt-dlp `latest` is the newest release tag. BtbN
+ * ffmpeg builds carry no version in their release metadata, so for ffmpeg
+ * `latest` is the newest build asset's `updated_at` and `asset_updated_at` is
+ * the one installed; `update_available` hides that difference from the UI.
+ */
+export const ToolVersionsSchema = z.object({
+  /** Version string of the binary in /data/bin. */
+  current: z.string().nullable(),
+  /** Version kept as `<tool>.prev` for rollback. */
+  previous: z.string().nullable(),
+  /** Version the image shipped (/opt/cellar/bin). */
+  baseline: z.string().nullable(),
+  latest: z.string().nullable(),
+  /** Epoch ms of the last release check, successful or not. */
+  checked_at: z.number().int().nullable(),
+  /** Epoch ms of the last swap (update or rollback). */
+  updated_at: z.number().int().nullable(),
+  update_available: z.boolean(),
+  /** The last check's failure, null after a clean check. */
+  last_error: z.string().nullable(),
+  /** After a rollback the release rolled away from is not reinstalled until forced. */
+  rolled_back_from: z.string().nullable(),
+  /** ffmpeg only: the installed build asset's `updated_at`. */
+  asset_updated_at: z.string().nullable().optional(),
+});
+export type ToolVersionsInfo = z.infer<typeof ToolVersionsSchema>;
+
+export const ToolUpdateOutcomeSchema = z.object({
+  tool: UpdatableToolSchema,
+  status: z.enum(["updated", "up_to_date", "available", "skipped", "failed"]),
+  detail: z.string(),
+});
+export type ToolUpdateOutcome = z.infer<typeof ToolUpdateOutcomeSchema>;
+
+export const ToolsResponseSchema = z.object({
+  ytdlp: ToolVersionsSchema,
+  ffmpeg: ToolVersionsSchema,
+  js_runtime: z.string().nullable(),
+  pot_provider_url: z.string(),
+  auto_update: z.boolean(),
+  /** Present on POST /update: what each tool's check did. */
+  outcomes: z.array(ToolUpdateOutcomeSchema).optional(),
+});
+export type ToolsResponse = z.infer<typeof ToolsResponseSchema>;
+
+export const ToolUpdateRequestSchema = z.object({
+  tool: UpdatableToolSchema.optional(),
+  /** Re-download even when the installed release already matches. */
+  force: z.boolean().optional(),
+});
+export type ToolUpdateRequest = z.infer<typeof ToolUpdateRequestSchema>;
+
+export const ToolRollbackRequestSchema = z.object({ tool: UpdatableToolSchema });
+export type ToolRollbackRequest = z.infer<typeof ToolRollbackRequestSchema>;

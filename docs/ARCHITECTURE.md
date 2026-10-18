@@ -1191,10 +1191,12 @@ policy. Checks:
 | POST | `/api/jobs/:id/cancel` | admin | cancel a job (provisional shape) |
 | POST | `/api/jobs/:id/retry` | admin | retry a job (provisional shape) |
 | GET | `/api/checks` | admin | self-check history |
+| GET | `/api/checks/latest` | admin | the newest self-check run, `{ row }` (provisional shape) |
 | POST | `/api/checks/run` | admin | run the self-check now |
 | GET | `/api/stats/daily` | admin | pre-aggregated daily chart points |
 | GET | `/api/tools` | admin | yt-dlp / ffmpeg versions |
-| POST | `/api/tools/update` | admin | update tools now |
+| POST | `/api/tools/update` | admin | update tools now (check only when `tools.auto_update` is off) |
+| POST | `/api/tools/rollback` | admin | swap a tool back to its `.prev` build (provisional shape) |
 | POST | `/api/takeout` | admin | multipart upload of a Takeout zip / json / csv |
 | POST | `/api/actions/refresh-all` | admin | recheck all metadata, re-evaluate every rule |
 | POST | `/api/actions/eval-now` | admin | run an evaluation pass now |

@@ -19,11 +19,11 @@
     "jose": "^6.2.12",
     "pino": "^10.4.0",
     "pino-roll": "^4.0.0",
+    "undici": "^8.12.2",
     "web-push": "^3.6.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/web-push": "^3.6.4",
-    "undici": "^8.11.2"
+    "@types/web-push": "^3.6.4"
   }
 }

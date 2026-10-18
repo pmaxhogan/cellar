@@ -2,6 +2,7 @@ import { buildApp, INSECURE_BANNER } from "./app.ts";
 import { ConfigError, ensureDataDirs, loadConfig } from "./config.ts";
 import { openDb } from "./db/db.ts";
 import { ensureInstalledAt } from "./db/kv.ts";
+import { createSystemDeps, startSystemSchedules } from "./domain/systemDeps.ts";
 import { migrate } from "./db/migrate.ts";
 import { EventBus } from "./events.ts";
 import { bootScheduler } from "./jobs/boot.ts"; // wave1B
@@ -80,6 +81,11 @@ async function main(): Promise<void> {
   void refreshToolVersions(db, config.binDir, toolsLog).catch((error: unknown) => {
     toolsLog.warn({ err: error }, "could not record tool versions");
   });
+
+  // --- wave1C boot ---
+  // Boot self-check, periodic self-check and the daily tool update check (all unref'ed).
+  startSystemSchedules(createSystemDeps({ config, log: log.child({ mod: "system" }), db }));
+  // --- end wave1C boot ---
 }
 
 main().catch((error: unknown) => {

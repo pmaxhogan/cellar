@@ -14,6 +14,7 @@ import {
   refreshToolVersions,
   TOOL_VERSIONS_KEY,
   type ExecRunner,
+  type ToolVersionsState,
 } from "../src/media/tools.ts";
 import { createTempDb, type TempDb } from "./helpers.ts";
 
@@ -109,9 +110,7 @@ describe("probing", () => {
       "/data/bin/ffmpeg",
     ]);
     expect(readToolVersions(temp.db)).toEqual(versions);
-    expect(getKv<{ checkedAt: number }>(temp.db, TOOL_VERSIONS_KEY)?.checkedAt).toBeTypeOf(
-      "number",
-    );
+    expect(getKv<ToolVersionsState>(temp.db, TOOL_VERSIONS_KEY)?.ytdlp.current).toBe("2026.08.19");
   });
 
   it("reports null for a tool that fails, never throwing", async () => {
