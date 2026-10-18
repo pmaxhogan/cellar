@@ -42,6 +42,7 @@ function lookupApi(status: unknown = { version: "t" }): FakeApi {
           channel_id: null,
           status: "ok",
           has_cookies: true,
+          scrape_budget_per_hour: null,
           last_api_ok_at: null,
           last_cookie_ok_at: null,
           created_at: 1,
