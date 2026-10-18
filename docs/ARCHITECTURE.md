@@ -408,6 +408,7 @@ Each effect key declares a zod schema, a default, `allowedIn: ["global", "custom
 | `format_policy` | `prefer_av1` \| `prefer_vp9` \| `prefer_h264` \| `best` | `prefer_av1` | global, custom, video |
 | `max_height` | int (pixels) | unset (no cap) | global, custom, video |
 | `max_fps` | int | unset (no cap) | global, custom, video |
+| `quality_priority` | null or `{ primary: resolution \| fps, resolutions: every tier of 4320/2160/1440/1080/720/480/360/240/144 ranked, fps: every tier of 60/50/48/30/25/24 ranked }` | null (codec first) | global, custom, video |
 | `transcode` | object, see below | `{ mode: if_not_av1, codec: hevc_nvenc, quality: 28, preset: p5, audio_codec: copy }` | global, custom, video |
 | `captions` | `{ enabled, languages: string[] \| "all", auto_generated: bool }` | `{ enabled: true, languages: "all", auto_generated: true }` | global, custom, video |
 | `ytdlp` | `{ format_override?, rate_limit_bytes_per_s?, sleep_requests_min?, sleep_requests_max?, concurrent_fragments?, extra_args_allowlisted? }` | all fields unset (global settings apply) | global, custom, video |
@@ -967,7 +968,15 @@ The yt-dlp argv (`media/ytdlp.ts`, one flag per line of reasoning, URL last afte
   `captions_only` / `metadata_only`.
 - `-f <selector>`: `ytdlp.format_override` if the rule set one, else the selector built
   from `format_policy`, `max_height` and `max_fps` (for example `prefer_av1` ->
-  `bv*[vcodec^=av01][height<=H]+ba/bv*[height<=H]+ba/b`). `audio_only` selects
+  `bv*[vcodec^=av01][height<=H]+ba/bv*[height<=H]+ba/b`). A `quality_priority` replaces
+  the codec filters with one alternative per ranked (resolution, fps) pair, `primary` as
+  the outer key, each split by `aspect_ratio` so a resolution tier is the shorter side of
+  the frame in `(next tier down, tier]` and an fps tier is `(next tier down, tier]` (24
+  covers anything slower); the caps still apply to every alternative, then
+  `bv*<caps>+ba/b` catches the rest. The codec preference becomes `-S vcodec:av01|vp9|h264`
+  (none for `best`), so it only breaks ties within a tier and a top tier without AV1 may
+  be transcoded. `-S` covers the whole chain, so the catch-all sorts codec before
+  resolution. `audio_only` selects
   `bestaudio[ext=webm]/bestaudio`: YouTube always offers an Opus/WebM or m4a audio-only
   stream, so the track is kept as is and `-x` is never used. `captions_only` and
   `metadata_only` use `--skip-download` instead.

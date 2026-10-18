@@ -222,6 +222,42 @@ describe("EffectsEditor: controls", () => {
     expect(model.value["transcode"]).toEqual({ mode: "always", codec: "h264_nvenc" });
   });
 
+  it("edits the quality ranking: enable, reorder, switch primary, back to codec first", async () => {
+    const { wrapper, model } = await mountEditor({ quality_priority: null });
+    expect(wrapper.find("[data-test='quality-form']").exists()).toBe(false);
+    await wrapper.find("[data-test='effect-null'] input").setValue(false);
+    await flush();
+    expect(model.value["quality_priority"]).toEqual({
+      primary: "resolution",
+      resolutions: [4320, 2160, 1440, 1080, 720, 480, 360, 240, 144],
+      fps: [60, 50, 48, 30, 25, 24],
+    });
+    const resolutions = wrapper.find("[data-test='quality-resolutions']");
+    // 1080p is fourth; three moves up put it first.
+    for (let i = 3; i > 0; i--) {
+      await resolutions.findAll("[data-test='quality-up']")[i]!.trigger("click");
+      await flush();
+    }
+    expect((model.value["quality_priority"] as { resolutions: number[] }).resolutions).toEqual([
+      1080, 4320, 2160, 1440, 720, 480, 360, 240, 144,
+    ]);
+    const fps = wrapper.find("[data-test='quality-fps']");
+    await fps.findAll("[data-test='quality-down']")[0]!.trigger("click");
+    await flush();
+    expect((model.value["quality_priority"] as { fps: number[] }).fps).toEqual([
+      50, 60, 48, 30, 25, 24,
+    ]);
+    // The ends cannot move past the edge.
+    expect(fps.findAll("[data-test='quality-up']")[0]!.attributes("disabled")).toBeDefined();
+    expect(fps.findAll("[data-test='quality-down']")[5]!.attributes("disabled")).toBeDefined();
+    expect(fps.text()).toContain("24 fps or lower");
+    await emitOn(wrapper, "quality-primary", "fps");
+    expect(model.value["quality_priority"]).toMatchObject({ primary: "fps" });
+    await wrapper.find("[data-test='effect-null'] input").setValue(true);
+    await flush();
+    expect(model.value["quality_priority"]).toBeNull();
+  });
+
   it("edits captions: all languages, a typed list with chips, auto-generated, off", async () => {
     const { wrapper, model } = await mountEditor({
       captions: { enabled: true, languages: "all", auto_generated: true },

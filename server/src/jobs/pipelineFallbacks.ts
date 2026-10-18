@@ -1,4 +1,4 @@
-import { EffectiveSettingsSchema } from "@cellar/shared";
+import { EffectiveSettingsSchema, effectDefaults } from "@cellar/shared";
 import type { Logger } from "pino";
 import type { Config } from "../config.ts";
 import type { Db } from "../db/db.ts";
@@ -56,7 +56,12 @@ export function readEffectiveFallback(db: Db, videoId: string): PipelineEffectiv
   } catch {
     return null;
   }
-  const parsed = EffectiveSettingsSchema.safeParse(raw);
+  // Rows written before an effect existed lack its key; the default fills it in.
+  const parsed = EffectiveSettingsSchema.safeParse(
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? { ...effectDefaults(), ...raw }
+      : raw,
+  );
   if (!parsed.success) {
     return null;
   }

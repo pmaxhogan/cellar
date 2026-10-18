@@ -91,6 +91,10 @@ describe("fallback pipeline deps", () => {
       location_id: 1,
       include: true,
     });
+    // A row written before an effect existed still parses, with that effect's default.
+    const { quality_priority: _dropped, ...stale } = effectDefaults();
+    insert(JSON.stringify(stale));
+    expect(deps.getEffective(VIDEO_ID)?.effective.quality_priority).toBeNull();
 
     temp.db.run(
       "INSERT INTO accounts (id, label, created_at, updated_at) VALUES (4, 'a', 1, 1), (9, 'b', 1, 1)",

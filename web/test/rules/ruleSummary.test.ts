@@ -154,6 +154,7 @@ describe("effectChips and formatEffectValue", () => {
       media_mode: "video",
       format_policy: "prefer av1",
       max_height: "No limit",
+      quality_priority: "Codec first (format policy decides)",
       transcode: "hevc nvenc, q28, p5, if not AV1",
       captions: "all languages, auto",
       ytdlp: "global settings",
@@ -179,6 +180,18 @@ describe("effectChips and formatEffectValue", () => {
     expect(formatEffectValue("location_id", 9, labels)).toBe("#9");
     expect(formatEffectValue("max_height", 1080)).toBe("1080p");
     expect(formatEffectValue("max_fps", 30)).toBe("30 fps");
+    const ranked = {
+      primary: "resolution",
+      resolutions: [1080, 1440, 720, 2160, 480, 360, 240, 144, 4320],
+      fps: [60, 30, 50, 48, 25, 24],
+    };
+    expect(formatEffectValue("quality_priority", ranked)).toBe(
+      "1080p, 1440p, 720p...; 60, 30, 50 fps...",
+    );
+    expect(
+      formatEffectValue("quality_priority", { primary: "fps", resolutions: [720], fps: [30] }),
+    ).toBe("30 fps; 720p");
+    expect(formatEffectValue("quality_priority", "odd")).toBe("odd");
     expect(formatEffectValue("transcode", { mode: "none" })).toBe("off");
     expect(formatEffectValue("transcode", { mode: "always", codec: "av1_svt", quality: 30 })).toBe(
       "av1 svt, q30, always",

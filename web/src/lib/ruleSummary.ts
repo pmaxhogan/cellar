@@ -258,6 +258,18 @@ function formatYtdlp(v: Json): string {
   return parts.length === 0 ? "global settings" : parts.join(", ");
 }
 
+/** `1080p, 1440p, 720p...; 60, 30, 50 fps...` with the primary list first. */
+function formatQuality(v: Json): string {
+  const top = (list: unknown, each: (n: unknown) => string, unit = ""): string => {
+    const items = Array.isArray(list) ? list : [];
+    const shown = items.slice(0, 3).map(each).join(", ") + unit;
+    return items.length > 3 ? `${shown}...` : shown;
+  };
+  const res = top(v["resolutions"], (n) => `${String(n)}p`);
+  const fps = top(v["fps"], String, " fps");
+  return v["primary"] === "fps" ? `${fps}; ${res}` : `${res}; ${fps}`;
+}
+
 function formatNotify(v: Json): string {
   if (v["enabled"] !== true) return "off";
   const max = v["max_times"];
@@ -285,6 +297,8 @@ export function formatEffectValue(key: string, value: unknown, labels: SummaryLa
       return `${String(value)}p`;
     case "max_fps":
       return `${String(value)} fps`;
+    case "quality_priority":
+      return isObject(value) ? formatQuality(value) : String(value);
     case "transcode":
       return isObject(value) ? formatTranscode(value) : String(value);
     case "captions":

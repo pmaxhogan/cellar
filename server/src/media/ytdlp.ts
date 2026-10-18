@@ -1,8 +1,10 @@
 import {
   buildYtDlpFormat,
+  buildYtDlpFormatSort,
   isAllowlistedYtdlpArg,
   type EffectiveSettings,
   type ResolvedSettings,
+  type YtDlpFormatInput,
 } from "@cellar/shared";
 
 /**
@@ -81,12 +83,26 @@ export function formatSelector(effective: EffectiveSettings): string | null {
   if (override !== undefined && override !== "") {
     return override;
   }
-  return buildYtDlpFormat({
+  return buildYtDlpFormat(formatInput(effective));
+}
+
+function formatInput(effective: EffectiveSettings): YtDlpFormatInput {
+  return {
     format_policy: effective.format_policy,
+    quality_priority: effective.quality_priority,
     max_height: effective.max_height,
     max_fps: effective.max_fps,
     media_mode: effective.media_mode,
-  });
+  };
+}
+
+/** The `-S` sort for these settings (a quality ranking's codec tie-break), or null. */
+export function formatSort(effective: EffectiveSettings): string | null {
+  const override = effective.ytdlp.format_override;
+  if (override !== undefined && override !== "") {
+    return null;
+  }
+  return buildYtDlpFormatSort(formatInput(effective));
 }
 
 /** `--sub-langs` value for the captions effect. */
@@ -145,6 +161,10 @@ export function buildDownloadArgs(input: DownloadArgsInput): DownloadArgs {
     args.push("--skip-download");
   } else {
     args.push("-f", format);
+    const sort = formatSort(effective);
+    if (sort !== null) {
+      args.push("-S", sort);
+    }
   }
 
   const captions = effective.captions;

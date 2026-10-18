@@ -5,13 +5,19 @@ import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
-import { effectRegistry, type EffectKey, type EffectOption } from "@cellar/shared";
+import {
+  effectRegistry,
+  QualityPrioritySchema,
+  type EffectKey,
+  type EffectOption,
+} from "@cellar/shared";
 import { formatEffectValue } from "../../lib/ruleSummary.ts";
 import { useRuleLookups } from "../../lib/rulesLookups.ts";
 import AgeDurationInput from "./AgeDurationInput.vue";
 import CaptionsForm from "./CaptionsForm.vue";
 import IdListChoice from "./IdListChoice.vue";
 import NotifyForm from "./NotifyForm.vue";
+import QualityPriorityForm from "./QualityPriorityForm.vue";
 import TranscodeForm from "./TranscodeForm.vue";
 import YtdlpForm from "./YtdlpForm.vue";
 
@@ -59,6 +65,10 @@ onMounted(() => {
 
 function set(value: unknown): void {
   emit("update:modelValue", value);
+}
+
+function defaultQuality(): unknown {
+  return QualityPrioritySchema.parse({});
 }
 
 function setNullable(isNull: boolean, fallback: unknown): void {
@@ -144,6 +154,26 @@ function setNullable(isNull: boolean, fallback: unknown): void {
       :disabled="disabled"
       @update:model-value="set"
     />
+
+    <span v-else-if="control === 'quality'" class="effect-control__stack">
+      <span class="effect-control__inline">
+        <Checkbox
+          :model-value="modelValue === null"
+          binary
+          :input-id="nullId"
+          :disabled="disabled"
+          data-test="effect-null"
+          @update:model-value="(v: boolean) => setNullable(v, defaultQuality())"
+        />
+        <label :for="nullId">{{ ui.nullLabel }}</label>
+      </span>
+      <QualityPriorityForm
+        v-if="modelValue !== null"
+        :model-value="modelValue"
+        :disabled="disabled"
+        @update:model-value="set"
+      />
+    </span>
 
     <YtdlpForm
       v-else-if="control === 'ytdlp'"
@@ -235,5 +265,11 @@ function setNullable(isNull: boolean, fallback: unknown): void {
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.effect-control__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 </style>

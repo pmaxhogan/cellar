@@ -9,6 +9,7 @@ import {
   effectRegistry,
   EffectsSchema,
   isAllowlistedYtdlpArg,
+  QualityPrioritySchema,
   RULE_KINDS,
 } from "../../src/index.ts";
 
@@ -23,6 +24,7 @@ describe("effect registry", () => {
         "format_policy",
         "max_height",
         "max_fps",
+        "quality_priority",
         "transcode",
         "captions",
         "ytdlp",
@@ -45,6 +47,7 @@ describe("effect registry", () => {
       format_policy: "prefer_av1",
       max_height: null,
       max_fps: null,
+      quality_priority: null,
       transcode: {
         mode: "if_not_av1",
         codec: "hevc_nvenc",
@@ -169,6 +172,39 @@ describe("EffectsSchema (sparse)", () => {
     [{ include: "yes" }],
   ])("rejects %j", (effects) => {
     expect(EffectsSchema.safeParse(effects).success).toBe(false);
+  });
+});
+
+describe("QualityPrioritySchema", () => {
+  it("fills every tier in default order", () => {
+    expect(QualityPrioritySchema.parse({})).toEqual({
+      primary: "resolution",
+      resolutions: [4320, 2160, 1440, 1080, 720, 480, 360, 240, 144],
+      fps: [60, 50, 48, 30, 25, 24],
+    });
+  });
+
+  it("accepts any reordering", () => {
+    const ranked = {
+      primary: "fps",
+      resolutions: [1080, 1440, 720, 2160, 480, 360, 240, 144, 4320],
+      fps: [30, 60, 25, 24, 50, 48],
+    };
+    expect(QualityPrioritySchema.parse(ranked)).toEqual(ranked);
+  });
+
+  it.each([
+    ["a missing tier", { resolutions: [1080, 720] }],
+    ["a duplicate tier", { fps: [60, 60, 48, 30, 25, 24] }],
+    ["an unknown tier", { fps: [60, 50, 48, 30, 25, 23] }],
+    ["an unknown primary", { primary: "codec" }],
+    ["an unknown key", { codec: "av1" }],
+  ])("rejects %s", (_name, value) => {
+    expect(QualityPrioritySchema.safeParse(value).success).toBe(false);
+  });
+
+  it("is nullable as an effect", () => {
+    expect(EffectsSchema.parse({ quality_priority: null })).toEqual({ quality_priority: null });
   });
 });
 

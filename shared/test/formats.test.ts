@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildYtDlpFormat, summariseFormats, type YtDlpFormatInput } from "../src/formats.ts";
+import {
+  buildYtDlpFormat,
+  buildYtDlpFormatSort,
+  summariseFormats,
+  type YtDlpFormatInput,
+  type YtDlpQualityPriority,
+} from "../src/formats.ts";
 
 function video(overrides: Partial<YtDlpFormatInput>): YtDlpFormatInput {
   return { format_policy: "prefer_av1", media_mode: "video", ...overrides };
@@ -53,6 +59,90 @@ describe("buildYtDlpFormat", () => {
 
   it.each(cases)("%s", (_name, overrides, expected) => {
     expect(buildYtDlpFormat(video(overrides))).toBe(expected);
+  });
+});
+
+describe("buildYtDlpFormat with a quality priority", () => {
+  const ALL_RES = [4320, 2160, 1440, 1080, 720, 480, 360, 240, 144] as const;
+  const ALL_FPS = [60, 50, 48, 30, 25, 24] as const;
+  function ranked(overrides: Partial<YtDlpQualityPriority> = {}): YtDlpQualityPriority {
+    return { primary: "resolution", resolutions: ALL_RES, fps: ALL_FPS, ...overrides };
+  }
+  function alternatives(input: Partial<YtDlpFormatInput>): string[] {
+    return buildYtDlpFormat(video(input))!.split("/");
+  }
+
+  it("walks resolution first, both orientations per tier, then the catch-alls", () => {
+    const alts = alternatives({
+      quality_priority: ranked({ resolutions: [1080, ...ALL_RES.filter((r) => r !== 1080)] }),
+    });
+    expect(alts).toHaveLength(ALL_RES.length * ALL_FPS.length * 2 + 2);
+    expect(alts.slice(0, 4)).toEqual([
+      "bv*[aspect_ratio>=1][height>720][height<=1080][fps>50][fps<=60]+ba",
+      "bv*[aspect_ratio<1][width>720][width<=1080][fps>50][fps<=60]+ba",
+      "bv*[aspect_ratio>=1][height>720][height<=1080][fps>48][fps<=50]+ba",
+      "bv*[aspect_ratio<1][width>720][width<=1080][fps>48][fps<=50]+ba",
+    ]);
+    expect(alts.slice(-2)).toEqual(["bv*+ba", "b"]);
+    expect(alts).not.toContainEqual(expect.stringContaining("vcodec"));
+  });
+
+  it("walks frame rate first when fps is primary", () => {
+    const alts = alternatives({
+      quality_priority: ranked({ primary: "fps", fps: [30, 60, 50, 48, 25, 24] }),
+    });
+    expect(alts.slice(0, 3)).toEqual([
+      "bv*[aspect_ratio>=1][height>2160][height<=4320][fps>25][fps<=30]+ba",
+      "bv*[aspect_ratio<1][width>2160][width<=4320][fps>25][fps<=30]+ba",
+      "bv*[aspect_ratio>=1][height>1440][height<=2160][fps>25][fps<=30]+ba",
+    ]);
+  });
+
+  it("leaves the lowest tiers open below and keeps the caps on every alternative", () => {
+    const alts = alternatives({
+      quality_priority: ranked({ resolutions: [144], fps: [24] }),
+      max_height: 1080,
+      max_fps: 30,
+    });
+    expect(alts).toEqual([
+      "bv*[aspect_ratio>=1][height<=144][fps<=24][height<=1080][fps<=30]+ba",
+      "bv*[aspect_ratio<1][width<=144][fps<=24][height<=1080][fps<=30]+ba",
+      "bv*[height<=1080][fps<=30]+ba",
+      "b",
+    ]);
+  });
+
+  it("ignores the ranking outside video mode", () => {
+    expect(buildYtDlpFormat(video({ media_mode: "audio_only", quality_priority: ranked() }))).toBe(
+      "ba/b",
+    );
+  });
+});
+
+describe("buildYtDlpFormatSort", () => {
+  const priority: YtDlpQualityPriority = {
+    primary: "resolution",
+    resolutions: [1080],
+    fps: [60],
+  };
+
+  it.each([
+    ["prefer_av1", "vcodec:av01"],
+    ["prefer_vp9", "vcodec:vp9"],
+    ["prefer_h264", "vcodec:h264"],
+    ["best", null],
+  ] as const)("maps %s to %s", (format_policy, expected) => {
+    expect(buildYtDlpFormatSort(video({ format_policy, quality_priority: priority }))).toBe(
+      expected,
+    );
+  });
+
+  it("is null without a ranking or outside video mode", () => {
+    expect(buildYtDlpFormatSort(video({}))).toBeNull();
+    expect(buildYtDlpFormatSort(video({ quality_priority: null }))).toBeNull();
+    expect(
+      buildYtDlpFormatSort(video({ media_mode: "audio_only", quality_priority: priority })),
+    ).toBeNull();
   });
 });
 

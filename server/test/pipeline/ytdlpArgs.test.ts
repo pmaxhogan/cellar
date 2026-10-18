@@ -1,4 +1,4 @@
-import { resolveSettings } from "@cellar/shared";
+import { QualityPrioritySchema, resolveSettings } from "@cellar/shared";
 import { describe, expect, it } from "vitest";
 import {
   AUDIO_ONLY_FORMAT,
@@ -82,6 +82,24 @@ describe("buildDownloadArgs", () => {
     expect(
       valueOf(build({ effective: effective({ ytdlp: { format_override: "18" } }) }).args, "-f"),
     ).toBe("18");
+  });
+
+  it("adds a codec -S only for a quality ranking without an override", () => {
+    expect(build().args).not.toContain("-S");
+    const quality_priority = QualityPrioritySchema.parse({});
+    const ranked = build({
+      effective: effective({ quality_priority }),
+    }).args;
+    expect(valueOf(ranked, "-S")).toBe("vcodec:av01");
+    expect(valueOf(ranked, "-f")).toMatch(/^bv\*\[aspect_ratio>=1\]\[height>2160\]/);
+    const override = build({
+      effective: effective({
+        quality_priority,
+        ytdlp: { format_override: "18" },
+      }),
+    }).args;
+    expect(override).not.toContain("-S");
+    expect(valueOf(override, "-f")).toBe("18");
   });
 
   it("keeps the original audio for audio_only, with no -x", () => {

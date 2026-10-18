@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FPS_TIERS, QUALITY_PRIMARIES, RESOLUTION_TIERS } from "../formats.ts";
 import { cloneJson } from "./clone.ts";
 import { RuleDurationSchema } from "./time.ts";
 
@@ -26,6 +27,7 @@ export const EFFECT_CONTROLS = [
   "location",
   "transcode",
   "captions",
+  "quality",
   "ytdlp",
   "accounts",
   "proxy",
@@ -125,6 +127,29 @@ export function isAllowlistedYtdlpArg(arg: string): boolean {
 }
 
 const LANGUAGE_RE = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{1,8})*$/;
+
+/** A list holding every tier exactly once, in any order. */
+function tierRanking<T extends number>(tiers: readonly [T, ...T[]], what: string) {
+  return z
+    .array(z.literal(tiers))
+    .refine(
+      (list) => list.length === tiers.length && new Set(list).size === tiers.length,
+      `Rank every ${what} exactly once`,
+    )
+    .default(() => [...tiers]);
+}
+
+/**
+ * `quality_priority`: every resolution and frame rate tier, ranked. The
+ * downloader takes the highest-ranked combination YouTube offers, walking
+ * `primary` as the outer key.
+ */
+export const QualityPrioritySchema = z.strictObject({
+  primary: z.enum(QUALITY_PRIMARIES).default("resolution"),
+  resolutions: tierRanking(RESOLUTION_TIERS, "resolution"),
+  fps: tierRanking(FPS_TIERS, "frame rate"),
+});
+export type QualityPriority = z.output<typeof QualityPrioritySchema>;
 
 export const TranscodeSchema = z.strictObject({
   mode: z.enum(TRANSCODE_MODES).default("if_not_av1"),
@@ -292,6 +317,20 @@ export const effectRegistry = {
       min: 1,
       max: 480,
       nullLabel: "No limit",
+    },
+  }),
+  quality_priority: effect({
+    schema: QualityPrioritySchema.nullable(),
+    default: null,
+    allowedIn: ALL_KINDS,
+    ui: {
+      group: "media",
+      label: "Quality priority",
+      description:
+        "Rank resolutions and frame rates; the highest-ranked one YouTube offers wins and the " +
+        "format policy only breaks ties, so a top-ranked tier without AV1 may get transcoded.",
+      control: "quality",
+      nullLabel: "Codec first (format policy decides)",
     },
   }),
   transcode: effect({
