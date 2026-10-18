@@ -61,6 +61,8 @@ export const takeoutRoutes: FastifyPluginAsync<TakeoutRoutesOptions> = async (ap
   const queue = new JobQueue(db, { registry, events });
   const maxBytes = options.maxUploadBytes ?? TAKEOUT_MAX_UPLOAD_BYTES;
   const tar = options.tar ?? systemTar();
+  const accountExists = (id: number): boolean =>
+    db.get("SELECT id FROM accounts WHERE id = ?", id) !== undefined;
 
   await app.register(multipart, {
     throwFileSizeLimit: true,
@@ -81,6 +83,10 @@ export const takeoutRoutes: FastifyPluginAsync<TakeoutRoutesOptions> = async (ap
       query?.account_id === undefined
         ? null
         : parseQuery(TakeoutUploadQuerySchema, request).account_id;
+    // Checked before the body is read, so a wrong id does not cost a large upload first.
+    if (accountId !== null && !accountExists(accountId)) {
+      throw notFound("Account", accountId);
+    }
 
     const dir = await createStagingDir(config.tmpDir, randomUUID());
     try {
@@ -114,7 +120,7 @@ export const takeoutRoutes: FastifyPluginAsync<TakeoutRoutesOptions> = async (ap
           fields: { account_id: "Required" },
         });
       }
-      if (db.get("SELECT id FROM accounts WHERE id = ?", accountId) === undefined) {
+      if (!accountExists(accountId)) {
         throw notFound("Account", accountId);
       }
       if (uploads.length === 0) {
