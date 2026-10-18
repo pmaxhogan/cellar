@@ -199,7 +199,8 @@ describe("running a job", () => {
     const s = makeScheduler();
     s.start();
     await s.waitForIdle();
-    expect(ran).toEqual([2]);
+    // The restart refunded the interrupted attempt, so the rerun is attempt 1.
+    expect(ran).toEqual([1]);
     s.start(); // idempotent
   });
 
