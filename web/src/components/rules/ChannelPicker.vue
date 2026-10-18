@@ -106,7 +106,7 @@ function onBlur(): void {
     :delay="250"
     :min-length="1"
     size="small"
-    placeholder="Search channels"
+    placeholder="Channel name or id"
     aria-label="Channel"
     data-test="channel-picker"
     @complete="(e: { query: string }) => search(e.query)"

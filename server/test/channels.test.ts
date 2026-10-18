@@ -104,6 +104,9 @@ describe("GET /api/channels", () => {
     expect((await list("?q=100%25")).rows.map((row) => row.id)).toEqual([UC_A]);
     expect((await list("?q=alph_")).total).toBe(0);
     expect((await list(`?q=${UC_C}`)).rows.map((row) => row.id)).toEqual([UC_C]);
+    // A partly typed id matches by prefix, case-sensitively.
+    expect((await list("?q=UCccc")).rows.map((row) => row.id)).toEqual([UC_C]);
+    expect((await list("?q=UCCCC")).total).toBe(0);
     expect((await list("?kind=manual")).rows.map((row) => row.id)).toEqual([UC_B]);
     expect((await list("?kind=subscription&q=alpha")).total).toBe(1);
   });

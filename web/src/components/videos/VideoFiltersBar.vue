@@ -14,7 +14,9 @@ import { SOURCE_LABELS, TYPE_LABELS } from "./videoDisplay.ts";
 /**
  * The filter bar above the videos table. Every change is emitted as a whole
  * new filter object; the search box is debounced so typing does not fire a
- * request per keystroke (Enter searches at once).
+ * request per keystroke (Enter searches at once). The channel picker sits in
+ * the main row: it narrows the list to one channel, picked by title, handle
+ * or (partial) UC... id.
  */
 const props = defineProps<{
   modelValue: VideoFilters;
@@ -105,7 +107,7 @@ function dateValue(event: Event): string | null {
         <InputText
           :model-value="q"
           data-test="video-search"
-          placeholder="Search titles, descriptions, channels and tags"
+          placeholder="Search titles, descriptions, tags, channel names or ids"
           aria-label="Search videos"
           @update:model-value="onSearchInput"
           @keyup.enter="searchNow"
@@ -148,6 +150,13 @@ function dateValue(event: Event): string | null {
         data-test="filter-downloaded"
         @update:model-value="patch({ downloaded: $event ?? null })"
       />
+      <span class="video-filters__channel">
+        <ChannelPicker
+          :model-value="modelValue.channel_id"
+          data-test="filter-channel"
+          @update:model-value="patch({ channel_id: typeof $event === 'string' ? $event : null })"
+        />
+      </span>
       <Button
         :label="expanded ? 'Fewer filters' : 'More filters'"
         size="small"
@@ -181,14 +190,6 @@ function dateValue(event: Event): string | null {
           aria-label="Account"
           data-test="filter-account"
           @update:model-value="patch({ account_id: $event ?? null })"
-        />
-      </div>
-      <div class="cellar-field">
-        <label>Channel</label>
-        <ChannelPicker
-          :model-value="modelValue.channel_id"
-          data-test="filter-channel"
-          @update:model-value="patch({ channel_id: typeof $event === 'string' ? $event : null })"
         />
       </div>
       <div class="cellar-field">
@@ -311,6 +312,10 @@ function dateValue(event: Event): string | null {
 
 .video-filters__search :deep(input) {
   width: 100%;
+}
+
+.video-filters__channel :deep(input) {
+  width: 14rem;
 }
 
 .video-filters__more {

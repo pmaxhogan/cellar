@@ -133,6 +133,17 @@ describe("VideoFiltersBar", () => {
     expect(last(wrapper)).toEqual(emptyFilters());
   });
 
+  it("keeps the channel picker in the always visible row", () => {
+    const wrapper = mountBar({ channel_id: UC });
+    const picker = wrapper.findComponent(ChannelPicker);
+    expect(picker.props("modelValue")).toBe(UC);
+    expect(wrapper.find("[data-test='filters-more']").findComponent(ChannelPicker).exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-test='filters-reset']").exists()).toBe(true);
+    expect(wrapper.find("[data-test='video-search']").attributes("placeholder")).toContain("ids");
+  });
+
   it("hides the reset button without filters", () => {
     expect(mountBar().find("[data-test='filters-reset']").exists()).toBe(false);
   });

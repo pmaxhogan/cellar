@@ -69,7 +69,8 @@ export function listChannels(db: Db, query: ChannelListQuery): ChannelPage {
   const q = query.q?.trim() ?? "";
   if (q !== "") {
     const pattern = `%${escapeLike(q)}%`;
-    where.push("(c.title LIKE ? ESCAPE '\\' OR c.handle LIKE ? ESCAPE '\\' OR c.id = ?)");
+    // The id matches case-sensitively by prefix, so a partly typed UC... id finds it.
+    where.push("(c.title LIKE ? ESCAPE '\\' OR c.handle LIKE ? ESCAPE '\\' OR instr(c.id, ?) = 1)");
     params.push(pattern, pattern, q);
   }
   if (query.kind !== undefined) {
