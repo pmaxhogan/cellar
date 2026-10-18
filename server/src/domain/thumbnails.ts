@@ -82,8 +82,10 @@ function latestByVariant(db: Db, videoId: string): Map<string, LatestRow> {
 }
 
 /**
- * True on the first recheck (nothing stored) and when a variant the API names
- * has no stored row or its latest stored URL differs from the API's.
+ * True on the first recheck (nothing stored) and when the latest stored URL
+ * of a variant differs from the URL the API now names for it. A variant
+ * without a stored row (YouTube had none, e.g. no maxres) does not count, or
+ * every recheck would refetch it.
  */
 export function thumbnailsNeedRefresh(
   db: Db,
@@ -99,7 +101,8 @@ export function thumbnailsNeedRefresh(
     if (typeof url !== "string" || url === "") {
       continue;
     }
-    if (latest.get(variant)?.url !== url) {
+    const stored = latest.get(variant);
+    if (stored !== undefined && stored.url !== url) {
       return true;
     }
   }
