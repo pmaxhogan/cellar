@@ -1,6 +1,7 @@
 import { parseChannelRef, type ChannelRef, type ChannelRow } from "@cellar/shared";
 import type { Db } from "../db/db.ts";
 import { youtubeApi } from "../youtube/api.ts";
+import { ensureChannel } from "../youtube/ingest.ts";
 import { nowOf, type ServiceDeps } from "./deps.ts";
 import { conflict, DomainError, invalid, notFound } from "./errors.ts";
 
@@ -223,6 +224,18 @@ export async function addManualChannel(
   const id = found?.id ?? ref.value;
   const now = nowOf(deps);
   const created = deps.db.tx(() => {
+    // ensureChannel reindexes the channel's videos in videos_fts when the title
+    // changes (a contentless FTS table must be deleted with the indexed text).
+    ensureChannel(
+      deps.db,
+      {
+        id,
+        title: found?.snippet?.title ?? null,
+        thumbnailUrl: found === null ? null : thumbnailOf(found),
+        uploadsPlaylistId: found?.contentDetails?.relatedPlaylists?.uploads ?? null,
+      },
+      now,
+    );
     deps.db.run(
       `INSERT INTO channels (id, title, handle, uploads_playlist_id, thumbnail_url, first_seen_at,
                              created_at, updated_at)

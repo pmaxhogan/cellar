@@ -13,7 +13,7 @@ import { registerRuleHandlers, registerRuleSchedules } from "./jobs/handlers/eva
 import { jobRegistry } from "./jobs/types.ts"; // wave2B
 import { bootPipeline } from "./jobs/pipelineBoot.ts"; // wave3
 import { createPipelineDeps } from "./jobs/pipelineWiring.ts"; // wave3
-import { bootIngestion } from "./jobs/ingestBoot.ts"; // wave2A
+import { bootIngestion, budgetHooks } from "./jobs/ingestBoot.ts"; // wave2A
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -53,6 +53,8 @@ async function main(): Promise<void> {
     log,
     events,
     getSettings: () => getSettings(db, config),
+    // API unit and per-account scrape budgets (jobs/ingestBoot.ts).
+    ...budgetHooks({ db }),
   });
   // --- end wave1B scheduler boot ---
 
