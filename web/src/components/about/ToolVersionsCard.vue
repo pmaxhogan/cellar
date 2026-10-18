@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import Button from "primevue/button";
 import Tag from "primevue/tag";
 import { useApi } from "../../api/provide.ts";
@@ -38,6 +38,13 @@ const busy = ref<Busy | null>(null);
 const rollbackTarget = ref<ToolName | null>(null);
 /** What the last check or update did, per tool. */
 const outcomes = ref<ToolUpdateOutcome[]>([]);
+// A plain GET /api/tools (the page's Refresh) carries no outcomes: drop the stale list.
+watch(
+  () => props.tools,
+  (next) => {
+    if (next.outcomes === undefined) outcomes.value = [];
+  },
+);
 
 const rows = computed(() =>
   TOOL_NAMES.map((name) => ({

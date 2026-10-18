@@ -302,6 +302,12 @@ describe("About tools: update outcomes", () => {
       detail: "yt-dlp: up to date; ffmpeg: failed",
     });
     expect(toasts.some((toast) => toast.summary === "Tools are up to date")).toBe(false);
+
+    // Refresh re-reads GET /api/tools, which has no outcomes: the old list goes.
+    const refresh = wrapper.findAll("button").find((button) => button.text() === "Refresh")!;
+    await refresh.trigger("click");
+    await flush();
+    expect(wrapper.find("[data-tool-outcomes]").exists()).toBe(false);
   });
 
   it("shows the stored last error before any check runs", async () => {
