@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Cellar">
+  <title>Cellar</title>
+  <!-- A wine bottle. Deep wine body with a rose rim so the silhouette survives
+       both a dark tab strip and a white one; the pale label keeps it a bottle
+       rather than a blob at 16px. -->
+  <path d="M27 4 H37 V20 C37 24 46 27 46 36 V56 A4 4 0 0 1 42 60 H22 A4 4 0 0 1 18 56 V36 C18 27 27 24 27 20 Z" fill="#8e2643" stroke="#e2738e" stroke-width="2.5" stroke-linejoin="round"/>
+  <rect x="26" y="3" width="12" height="7" rx="1.5" fill="#330b18" stroke="#e2738e" stroke-width="2"/>
+  <rect x="22" y="38" width="20" height="12" rx="2" fill="#f6c8d3"/>
+  <path d="M26 44 H38" stroke="#8e2643" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
