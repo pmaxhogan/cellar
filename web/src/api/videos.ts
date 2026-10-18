@@ -315,13 +315,14 @@ export const HISTORY_PER_PAGE = 50;
 export function getVideoHistory(
   api: ApiClient,
   id: string,
-  query: { page: number; perPage?: number; field?: string },
+  query: { page: number; perPage?: number; field?: string; counters?: boolean },
   signal?: AbortSignal,
 ): Promise<VideoHistoryResponse> {
   const search = buildQuery({
     page: query.page,
     perPage: query.perPage ?? HISTORY_PER_PAGE,
     field: query.field,
+    counters: query.counters,
   });
   return api.request(videoPath(id, `/history${search}`), {
     schema: VideoHistoryResponseSchema,

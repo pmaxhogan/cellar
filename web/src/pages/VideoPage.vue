@@ -24,6 +24,7 @@ import RuleLink from "../components/inspect/RuleLink.vue";
 import VideoHistory from "../components/videos/VideoHistory.vue";
 import VideoMediaTable from "../components/videos/VideoMediaTable.vue";
 import VideoPlayer from "../components/videos/VideoPlayer.vue";
+import VideoPreviousTitles from "../components/videos/VideoPreviousTitles.vue";
 import VideoShareLinks from "../components/videos/VideoShareLinks.vue";
 import VideoStatsChart from "../components/videos/VideoStatsChart.vue";
 import {
@@ -291,6 +292,7 @@ async function confirmTrash(): Promise<void> {
           detail.id
         }}</a>
       </div>
+      <VideoPreviousTitles :titles="detail.previous_titles" />
 
       <article class="cellar-card">
         <VideoPlayer

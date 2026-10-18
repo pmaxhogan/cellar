@@ -1,28 +1,13 @@
-import type { VideoChangeRow, VideoStatsPoint } from "@cellar/shared";
+import type { VideoStatsPoint } from "@cellar/shared";
 import { formatDuration, formatNumber } from "../../lib/format.ts";
 import { formatDay } from "./videoDisplay.ts";
 
 /**
  * Pure helpers for the detail page's history timeline and stats chart, kept
  * out of the components so the formatting rules are unit tested directly.
+ * Which fields count as counters lives in @cellar/shared (COUNTER_FIELDS); the
+ * server drops them from the timeline unless asked.
  */
-
-/** Fields that tick on every recheck. They live in the chart and are collapsed in the timeline. */
-export const COUNTER_FIELDS: ReadonlySet<string> = new Set([
-  "views",
-  "likes",
-  "comments",
-  "ryd_ratio",
-  "ryd_likes",
-  "ryd_dislikes",
-  "view_count",
-  "like_count",
-  "comment_count",
-]);
-
-export function isCounterField(field: string): boolean {
-  return COUNTER_FIELDS.has(field);
-}
 
 export const FIELD_LABELS: Record<string, string> = {
   title: "Title",
@@ -64,20 +49,6 @@ export function formatChangeValue(field: string, value: unknown): string {
     return value.length === 0 ? "(none)" : value.join(", ");
   }
   return JSON.stringify(value);
-}
-
-export interface HistoryView {
-  /** Non-counter changes, newest first as the server sends them. */
-  changes: VideoChangeRow[];
-  /** Counter ticks, hidden until expanded. */
-  counters: VideoChangeRow[];
-}
-
-export function splitHistory(rows: readonly VideoChangeRow[]): HistoryView {
-  const changes: VideoChangeRow[] = [];
-  const counters: VideoChangeRow[] = [];
-  for (const row of rows) (isCounterField(row.field) ? counters : changes).push(row);
-  return { changes, counters };
 }
 
 // --- stats chart -------------------------------------------------------------

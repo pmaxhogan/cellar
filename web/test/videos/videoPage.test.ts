@@ -136,6 +136,46 @@ describe("VideoPage sections", () => {
     expect(text.classes()).not.toContain("video-description__text--clamped");
   });
 
+  it("shows no previous titles line when the title never changed", async () => {
+    const wrapper = await mountVideo(serve());
+    expect(wrapper.find("[data-test='previous-titles']").exists()).toBe(false);
+  });
+
+  it("lists earlier titles near the title, most recent first, collapsing the rest", async () => {
+    const day = (d: number) => Date.UTC(2026, 9, d);
+    const wrapper = await mountVideo(
+      serve({
+        previous_titles: [
+          { title: "Fourth", changed_at: day(10) },
+          { title: "Third", changed_at: day(8) },
+          { title: "Second", changed_at: day(5) },
+          { title: "First", changed_at: day(1) },
+        ],
+      }),
+    );
+    const line = find(wrapper, "[data-test='previous-titles']");
+    expect(line.text()).toContain("Previously titled");
+    const shown = line.findAll("[data-test='previous-title']");
+    expect(shown.map((entry) => entry.text())).toEqual([
+      "Fourth (until 2026-10-10)",
+      "Third (until 2026-10-08)",
+      "Second (until 2026-10-05)",
+    ]);
+    const more = find(wrapper, "[data-test='previous-titles-more']");
+    expect(more.find("summary").text()).toBe("1 more");
+    expect(more.findAll("[data-test='previous-title-older']").map((e) => e.text())).toEqual([
+      "First (until 2026-10-01)",
+    ]);
+  });
+
+  it("does not collapse a short list of previous titles", async () => {
+    const wrapper = await mountVideo(
+      serve({ previous_titles: [{ title: "Before", changed_at: Date.UTC(2026, 0, 2) }] }),
+    );
+    expect(find(wrapper, "[data-test='previous-title']").text()).toBe("Before (until 2026-01-02)");
+    expect(wrapper.find("[data-test='previous-titles-more']").exists()).toBe(false);
+  });
+
   it("explains where the priority came from", async () => {
     const override = await mountVideo(serve({ overrides: { reclaim_priority: -1 } }));
     expect(find(override, "[data-test='video-priority']").text()).toContain(
@@ -425,20 +465,19 @@ describe("VideoPage player", () => {
 });
 
 describe("VideoPage history and stats", () => {
-  it("shows changes as old -> new and hides counter ticks until asked", async () => {
-    const server = serve().on("GET", `${BASE}/history`, () =>
-      json(
-        listPage(
-          [
-            change({ id: 1, field: "title", old: "Old", new: "New" }),
-            change({ id: 2, field: "views", old: 10, new: 20 }),
-            change({ id: 3, field: "description", old: "a".repeat(200), new: "b" }),
-          ],
-          3,
-        ),
-      ),
-    );
+  it("shows changes as old -> new and asks the server for counter ticks only on request", async () => {
+    const server = serve().on("GET", `${BASE}/history`, (request) => {
+      const changes = [
+        change({ id: 1, field: "title", old: "Old", new: "New" }),
+        change({ id: 3, field: "description", old: "a".repeat(200), new: "b" }),
+      ];
+      if (request.query.get("counters") === "false") return json(listPage(changes, 2));
+      const all = [changes[0]!, change({ id: 2, field: "views", old: 10, new: 20 }), changes[1]!];
+      return json(listPage(all, 3));
+    });
     const wrapper = await mountVideo(server);
+    const calls = () => server.callsTo("GET", `${BASE}/history`);
+    expect(calls().at(-1)!.query.get("counters")).toBe("false");
     const items = () => wrapper.findAll("[data-test='history-item']");
     expect(items().map((item) => item.attributes("data-field"))).toEqual(["title", "description"]);
     const title = items()[0]!;
@@ -449,26 +488,63 @@ describe("VideoPage history and stats", () => {
     expect(title.text()).toContain("->");
     expect(items()[1]!.find("details").exists()).toBe(true);
     const toggle = find(wrapper, "[data-test='history-counters']");
-    expect(toggle.text()).toBe("Show 1 counter change");
+    expect(toggle.text()).toBe("Show counter changes");
     await toggle.trigger("click");
+    await flush();
+    expect(calls().at(-1)!.query.get("counters")).toBe("true");
+    expect(calls().at(-1)!.query.get("page")).toBe("1");
     expect(items()).toHaveLength(3);
     expect(items()[1]!.text()).toContain("10");
+    expect(toggle.text()).toBe("Hide counter changes");
     await toggle.trigger("click");
+    await flush();
+    expect(calls().at(-1)!.query.get("counters")).toBe("false");
     expect(items()).toHaveLength(2);
   });
 
-  it("pages through older history", async () => {
+  it("offers the counter toggle even when only counters changed", async () => {
+    const server = serve().on("GET", `${BASE}/history`, (request) =>
+      request.query.get("counters") === "false"
+        ? json(listPage([], 0))
+        : json(listPage([change({ id: 2, field: "views", old: 1, new: 2 })], 1)),
+    );
+    const wrapper = await mountVideo(server);
+    expect(find(wrapper, "[data-test='history-empty']").text()).toContain("No changes");
+    await find(wrapper, "[data-test='history-counters']").trigger("click");
+    await flush();
+    expect(wrapper.findAll("[data-test='history-item']")).toHaveLength(1);
+  });
+
+  it("resets to the first page when the counter toggle changes", async () => {
     const server = serve().on("GET", `${BASE}/history`, (request) =>
       json(
         listPage(
-          [change({ id: Number(request.query.get("page")), field: "views" })],
+          [change({ id: Number(request.query.get("page")), field: "title" })],
           120,
           Number(request.query.get("page")),
         ),
       ),
     );
     const wrapper = await mountVideo(server);
-    expect(find(wrapper, "[data-test='history-only-counters']").exists()).toBe(true);
+    await find(wrapper, "[data-test='history-older']").trigger("click");
+    await flush();
+    expect(find(wrapper, "[data-test='history-page']").text()).toBe("Page 2 of 3");
+    await find(wrapper, "[data-test='history-counters']").trigger("click");
+    await flush();
+    expect(find(wrapper, "[data-test='history-page']").text()).toBe("Page 1 of 3");
+  });
+
+  it("pages through older history", async () => {
+    const server = serve().on("GET", `${BASE}/history`, (request) =>
+      json(
+        listPage(
+          [change({ id: Number(request.query.get("page")), field: "title" })],
+          120,
+          Number(request.query.get("page")),
+        ),
+      ),
+    );
+    const wrapper = await mountVideo(server);
     expect(find(wrapper, "[data-test='history-page']").text()).toBe("Page 1 of 3");
     expect(find(wrapper, "[data-test='history-newer']").attributes("disabled")).toBeDefined();
     await find(wrapper, "[data-test='history-older']").trigger("click");

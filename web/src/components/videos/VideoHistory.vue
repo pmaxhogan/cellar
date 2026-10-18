@@ -5,15 +5,16 @@ import type { VideoChangeRow } from "@cellar/shared";
 import { ABORTED_PROBLEM, normalizeError, type ApiClientError } from "../../api/client.ts";
 import { useApi } from "../../api/provide.ts";
 import { getVideoHistory, HISTORY_PER_PAGE } from "../../api/videos.ts";
-import { formatAbsolute, formatRelative, pluralize } from "../../lib/format.ts";
+import { formatAbsolute, formatRelative } from "../../lib/format.ts";
 import ErrorState from "../ErrorState.vue";
 import ListSkeleton from "../ListSkeleton.vue";
-import { fieldLabel, formatChangeValue, LONG_VALUE, splitHistory } from "./history.ts";
+import { fieldLabel, formatChangeValue, LONG_VALUE } from "./history.ts";
 
 /**
  * The change history of one video, newest first and paged: every field that
  * changed on YouTube with its old and new value. Counter ticks (views, likes,
- * comments) are collapsed behind a toggle; the stats chart plots them.
+ * comments) are left out by the server unless the toggle asks for them, so
+ * pages and totals cover only what is shown; the stats chart plots them.
  */
 const props = defineProps<{ videoId: string }>();
 
@@ -26,8 +27,6 @@ const error = ref<ApiClientError | null>(null);
 const showCounters = ref(false);
 let controller: AbortController | null = null;
 
-const view = computed(() => splitHistory(rows.value));
-const visible = computed(() => (showCounters.value ? rows.value : view.value.changes));
 const pages = computed(() => Math.max(1, Math.ceil(total.value / HISTORY_PER_PAGE)));
 
 async function load(): Promise<void> {
@@ -36,7 +35,12 @@ async function load(): Promise<void> {
   controller = mine;
   loading.value = true;
   try {
-    const result = await getVideoHistory(api, props.videoId, { page: page.value }, mine.signal);
+    const result = await getVideoHistory(
+      api,
+      props.videoId,
+      { page: page.value, counters: showCounters.value },
+      mine.signal,
+    );
     rows.value = result.rows;
     total.value = result.total;
     error.value = null;
@@ -54,6 +58,13 @@ async function load(): Promise<void> {
 
 function go(next: number): void {
   page.value = Math.min(pages.value, Math.max(1, next));
+  void load();
+}
+
+/** Totals change with the filter, so the toggle starts over at page 1. */
+function toggleCounters(): void {
+  showCounters.value = !showCounters.value;
+  page.value = 1;
   void load();
 }
 
@@ -79,13 +90,13 @@ function isLong(row: VideoChangeRow): boolean {
   <div class="history" data-test="history">
     <ErrorState v-if="error" :error="error" title="Could not load the history" @retry="load" />
     <ListSkeleton v-else-if="loading && rows.length === 0" :rows="3" label="Loading history" />
-    <p v-else-if="total === 0" class="cellar-muted" data-test="history-empty">
-      No changes recorded yet. Changes appear here after rechecks see something new.
-    </p>
     <template v-else>
-      <ol class="history__list">
+      <p v-if="total === 0" class="cellar-muted" data-test="history-empty">
+        No changes recorded yet. Changes appear here after rechecks see something new.
+      </p>
+      <ol v-else class="history__list">
         <li
-          v-for="row in visible"
+          v-for="row in rows"
           :key="row.id"
           class="history__item"
           :data-field="row.field"
@@ -118,24 +129,17 @@ function isLong(row: VideoChangeRow): boolean {
             }}</span>
           </div>
         </li>
-        <li v-if="visible.length === 0" class="cellar-muted" data-test="history-only-counters">
-          Only counter changes on this page.
-        </li>
       </ol>
       <div class="history__footer">
         <Button
-          v-if="view.counters.length > 0"
           size="small"
           text
-          :label="
-            showCounters
-              ? 'Hide counter changes'
-              : `Show ${pluralize(view.counters.length, 'counter change')}`
-          "
+          :label="showCounters ? 'Hide counter changes' : 'Show counter changes'"
+          :disabled="loading"
           data-test="history-counters"
-          @click="showCounters = !showCounters"
+          @click="toggleCounters"
         />
-        <span class="history__pager">
+        <span v-if="total > 0" class="history__pager">
           <Button
             size="small"
             text

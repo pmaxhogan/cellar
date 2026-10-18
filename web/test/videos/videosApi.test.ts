@@ -227,6 +227,10 @@ describe("video endpoints", () => {
     expect(history.query.get("page")).toBe("2");
     expect(history.query.get("perPage")).toBe("50");
     expect(history.query.get("field")).toBe("title");
+    expect(history.query.has("counters")).toBe(false);
+    await getVideoHistory(server.api, ID, { page: 1, counters: false });
+    const filtered = server.callsTo("GET", `/api/videos/${ID}/history`)[1]!;
+    expect(filtered.query.get("counters")).toBe("false");
     expect(await getVideoStats(server.api, ID)).toEqual({ points: [] });
     expect(await recheckVideo(server.api, ID)).toEqual({ job_id: 1, deduped: false });
     expect(await downloadVideoNow(server.api, ID)).toEqual({ job_id: 2, deduped: true });

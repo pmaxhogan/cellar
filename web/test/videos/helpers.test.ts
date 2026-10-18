@@ -4,8 +4,6 @@ import { runBulkJobs } from "../../src/components/videos/bulkJobs.ts";
 import {
   fieldLabel,
   formatChangeValue,
-  isCounterField,
-  splitHistory,
   statsChartData,
   statsChartOptions,
 } from "../../src/components/videos/history.ts";
@@ -17,7 +15,7 @@ import {
   videoStatus,
   watchUrl,
 } from "../../src/components/videos/videoDisplay.ts";
-import { change, ID, idFor, point } from "./fixtures.ts";
+import { ID, idFor, point } from "./fixtures.ts";
 
 describe("video display helpers", () => {
   it("derives the status badge", () => {
@@ -64,19 +62,6 @@ describe("history helpers", () => {
     expect(formatChangeValue("formats", { h: 1 })).toBe('{"h":1}');
     expect(fieldLabel("tags_json")).toBe("Tags");
     expect(fieldLabel("some_field")).toBe("some field");
-  });
-
-  it("splits counters from real changes", () => {
-    const rows = [
-      change({ id: 1, field: "views" }),
-      change({ id: 2, field: "title" }),
-      change({ id: 3, field: "likes" }),
-    ];
-    const view = splitHistory(rows);
-    expect(view.changes.map((row) => row.id)).toEqual([2]);
-    expect(view.counters.map((row) => row.id)).toEqual([1, 3]);
-    expect(isCounterField("ryd_dislikes")).toBe(true);
-    expect(isCounterField("description")).toBe(false);
   });
 
   it("builds chart data in time order on two axes", () => {
