@@ -28,9 +28,9 @@ not re-read `env_file`, so `.env` edits and compose edits need an explicit
 
 - TrueNAS SCALE with the Apps service running and Docker's default runtime set to
   `nvidia` (it is, on this NAS), plus the NVIDIA driver installed via Apps settings.
-- The ZFS pool `alpha`, and the `apps` parent dataset at `/mnt/tank/apps`.
+- The ZFS pool (`tank` in the examples), and the `apps` parent dataset at `/mnt/tank/apps`.
 - The existing token-managed `cloudflared` tunnel and a Cloudflare Zero Trust team.
-- `ssh nas` works (key auth, user `admin`, passwordless `sudo`). Remember that
+- `ssh nas` works (key auth, your admin user, passwordless `sudo`). Remember that
   `docker`, `zfs` and `zpool` all want `sudo` on this box.
 - A GHCR login for root at `/root/.docker/config.json` (present).
 - A Google Cloud project for the YouTube Data API (see "Google OAuth client").

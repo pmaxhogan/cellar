@@ -20,8 +20,7 @@ blob-report/
 .vite/
 
 # claude agent worktrees and session config
-.claude/*
-!.claude/cellar-spec.md
+.claude/
 
 # Playwright output
 e2e/test-results/

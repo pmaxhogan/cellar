@@ -42,6 +42,12 @@ jobs:
       # Em/en dashes and other non-ASCII punctuation break terminals and email clients.
       - name: ASCII check
         run: node scripts/check-ascii.mjs
+      # Private setup details must never land in this public repo. The patterns
+      # live in a repository secret, not in the tree.
+      - name: Private details check
+        run: node scripts/check-private.mjs
+        env:
+          PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
 
   test:
     name: Test (Node 26, coverage)
