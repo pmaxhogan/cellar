@@ -311,10 +311,10 @@ playlists and subscriptions, with history as JSON.
 
 ## Backup and restore
 
-| Path                          | Contents                                                                         | Reproducible?                                       |
-| ----------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `/data`                       | State DB (rules, accounts, share links, history, metadata timeline), logs, tools | **No.** This is the thing to back up.               |
-| `/media`                      | Video and audio files                                                            | Mostly: re-downloadable, except for deleted videos. |
+| Path                         | Contents                                                                         | Reproducible?                                       |
+| ---------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `/data`                      | State DB (rules, accounts, share links, history, metadata timeline), logs, tools | **No.** This is the thing to back up.               |
+| `/media`                     | Video and audio files                                                            | Mostly: re-downloadable, except for deleted videos. |
 | `/mnt/tank/apps/cellar/.env` | `CELLAR_SECRET_KEY`, Access values, Google client                                | **No** for the secret key. Keep a copy off the NAS. |
 
 - Without `CELLAR_SECRET_KEY` the encrypted columns in a restored `/data` are
