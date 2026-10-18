@@ -1,0 +1,229 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+
+  /* Semantic colors are not part of the PrimeVue token set, so they live here
+     and are referenced by component styles. See docs/brand/palette.md. */
+  --cellar-success: #1e7a47;
+  --cellar-warn: #8f6304;
+  --cellar-error: #b8322a;
+  --cellar-info: #1f6fb2;
+  --cellar-success-bg: #e7f3ec;
+  --cellar-warn-bg: #faf1d8;
+  --cellar-error-bg: #fbe9e7;
+  --cellar-info-bg: #e6f0f9;
+  --cellar-warn-border: #d9b85a;
+  --cellar-error-border: #e2a29b;
+  --cellar-sidebar-width: 14.5rem;
+}
+
+:root.cellar-dark {
+  color-scheme: dark;
+  --cellar-success: #57b87a;
+  --cellar-warn: #f2ce4b;
+  --cellar-error: #ef6b5e;
+  --cellar-info: #6aa9e0;
+  --cellar-success-bg: #152a1d;
+  --cellar-warn-bg: #2b2410;
+  --cellar-error-bg: #2e1512;
+  --cellar-info-bg: #141f2c;
+  --cellar-warn-border: #6b5a16;
+  --cellar-error-border: #73302a;
+}
+
+:root:not(.cellar-dark) {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--p-surface-950, #151013);
+  color: var(--p-text-color, #f5eef1);
+}
+
+:root:not(.cellar-dark) body {
+  background: var(--p-surface-50, #faf7f8);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mono {
+  font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, monospace;
+}
+
+.cellar-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.cellar-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.cellar-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: var(--cellar-sidebar-width);
+  flex: none;
+  padding: 1rem 0.85rem;
+  border-right: 1px solid var(--p-content-border-color);
+  background: var(--p-surface-900, #1f181c);
+}
+
+:root:not(.cellar-dark) .cellar-sidebar {
+  background: var(--p-surface-0, #ffffff);
+}
+
+.cellar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.25rem 0.4rem;
+  font-weight: 650;
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cellar-brand img {
+  width: 28px;
+  height: 28px;
+}
+
+.cellar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cellar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 7px;
+  color: var(--p-text-muted-color);
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+
+.cellar-nav a:hover {
+  color: var(--p-text-color);
+  background: var(--p-content-hover-background);
+}
+
+.cellar-nav a:focus-visible {
+  outline: 2px solid var(--p-primary-color);
+  outline-offset: 2px;
+}
+
+.cellar-nav a.router-link-exact-active {
+  color: var(--p-navigation-item-active-color, var(--p-primary-color));
+  background: var(--p-navigation-item-active-background, rgba(196, 64, 95, 0.16));
+  font-weight: 600;
+}
+
+.cellar-sidebar__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cellar-main {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem;
+}
+
+.cellar-card {
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 10px;
+  background: var(--p-content-background);
+  padding: 1rem 1.1rem;
+}
+
+.cellar-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cellar-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cellar-muted {
+  color: var(--p-text-muted-color);
+}
+
+.cellar-note {
+  font-size: 0.82rem;
+  color: var(--p-text-muted-color);
+  margin: 0.2rem 0 0;
+}
+
+.cellar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.cellar-field > label {
+  font-size: 0.82rem;
+  color: var(--p-text-muted-color);
+}
+
+@media (max-width: 800px) {
+  .cellar-body {
+    flex-direction: column;
+  }
+
+  .cellar-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--p-content-border-color);
+  }
+
+  .cellar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .cellar-sidebar__footer {
+    margin-top: 0;
+  }
+}
