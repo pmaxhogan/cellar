@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { defineComponent, h, ref } from "vue";
+import { h, ref } from "vue";
 import AutoComplete from "primevue/autocomplete";
 import type { ConditionNode } from "@cellar/shared";
 import CaptionsForm from "../../src/components/rules/CaptionsForm.vue";
@@ -31,13 +31,13 @@ function transfer(): DataTransfer {
 
 function mountTree(initial: ConditionNode, fake: FakeApi = fakeApi()) {
   const model = ref<ConditionNode | null>(initial);
-  const Host = defineComponent({
+  const Host = {
     setup: () => () =>
       h(ConditionTree, {
         modelValue: model.value,
         "onUpdate:modelValue": (v: ConditionNode) => (model.value = v),
       }),
-  });
+  };
   return { wrapper: mount(Host, { global: mountGlobals({ api: fake.api }) }), model };
 }
 
@@ -182,14 +182,14 @@ describe("condition builder edge cases", () => {
 describe("effects editor edge cases", () => {
   function mountEffects(initial: Record<string, unknown>, fake: FakeApi = fakeApi()) {
     const model = ref<Record<string, unknown>>(initial);
-    const Host = defineComponent({
+    const Host = {
       setup: () => () =>
         h(EffectsEditor, {
           modelValue: model.value,
           kind: "custom",
           "onUpdate:modelValue": (v: Record<string, unknown>) => (model.value = v),
         }),
-    });
+    };
     return { wrapper: mount(Host, { global: mountGlobals({ api: fake.api }) }), model };
   }
 
@@ -328,7 +328,7 @@ describe("page and panel edge cases", () => {
     });
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/rules", component: defineComponent({ render: () => null }) }],
+      routes: [{ path: "/rules", component: { render: () => null } }],
     });
     await router.push("/rules");
     const wrapper = mount(RulesPage, { global: mountGlobals({ api: fake.api, router }) });
@@ -360,7 +360,7 @@ describe("page and panel edge cases", () => {
     });
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/:any(.*)", component: defineComponent({ render: () => null }) }],
+      routes: [{ path: "/:any(.*)", component: { render: () => null } }],
     });
     await router.push("/inspect");
     const wrapper = mount(InspectPanel, {
