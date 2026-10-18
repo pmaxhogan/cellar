@@ -6,7 +6,14 @@
  * Messages are user facing, so they must never contain credential material.
  */
 export type DomainErrorCode =
-  "not_found" | "conflict" | "invalid" | "immutable" | "unsupported" | "precondition_failed";
+  | "not_found"
+  | "conflict"
+  | "invalid"
+  | "immutable"
+  | "unsupported"
+  | "precondition_failed"
+  | "quota_exhausted"
+  | "no_account";
 
 const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   not_found: 404,
@@ -15,6 +22,8 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   immutable: 409,
   unsupported: 400,
   precondition_failed: 412,
+  quota_exhausted: 429,
+  no_account: 409,
 };
 
 export class DomainError extends Error {

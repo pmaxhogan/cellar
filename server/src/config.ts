@@ -1,5 +1,5 @@
-import { chmodSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -38,6 +38,27 @@ const booleanFlag = z
 
 const httpUrl = z.url({ protocol: /^https?$/ });
 
+/**
+ * A tool command override: a JSON array `["<command>", ...prefixArgs]`, so a
+ * test can point yt-dlp at `node scripts/fake-bin/yt-dlp.mjs`. The value is
+ * never echoed in a validation message.
+ */
+const toolOverride = z.preprocess(
+  blankToUndefined,
+  z
+    .string()
+    .transform((raw, ctx) => {
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Must be a JSON array of strings" });
+        return z.NEVER;
+      }
+    })
+    .pipe(z.array(z.string().min(1)).min(1, "Must name at least the command"))
+    .optional(),
+);
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
@@ -70,9 +91,24 @@ export const envSchema = z.object({
   WEB_DIST_DIR: optionalString,
   /** Baseline yt-dlp/ffmpeg/ffprobe baked into the image, copied to $DATA_DIR/bin. */
   BASELINE_BIN_DIR: z.preprocess(blankToUndefined, z.string().min(1).default("/opt/cellar/bin")),
+  /** Test and dev seams: `["<command>", ...prefixArgs]` as JSON. Unset in deployments. */
+  CELLAR_TOOL_YT_DLP: toolOverride,
+  CELLAR_TOOL_FFMPEG: toolOverride,
+  CELLAR_TOOL_FFPROBE: toolOverride,
+  /** Passed to yt-dlp as --plugin-dirs (the bgutil PO token plugin). Empty disables. */
+  CELLAR_YTDLP_PLUGIN_DIRS: z.string().default("/opt/cellar/yt-dlp-plugins"),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** The external tools the server runs. */
+export type ToolName = "yt-dlp" | "ffmpeg" | "ffprobe";
+
+/** How to start a tool: the executable plus arguments that go before the real argv. */
+export interface ToolCommand {
+  command: string;
+  prefixArgs: string[];
+}
 
 export interface Config {
   nodeEnv: Env["NODE_ENV"];
@@ -98,6 +134,10 @@ export interface Config {
   /** Absolute path to the built SPA. The app serves it when it exists. */
   webDistDir: string;
   baselineBinDir: string;
+  /** Per-tool command overrides from CELLAR_TOOL_<TOOL>; see toolCommand(). */
+  toolOverrides: Partial<Record<ToolName, readonly string[]>>;
+  /** yt-dlp --plugin-dirs value; empty string means none. */
+  ytdlpPluginDirs: string;
   insecureMode: boolean;
   cfAccess: {
     teamDomain: string;
@@ -190,6 +230,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       env.WEB_DIST_DIR ?? fileURLToPath(new URL("../../web/dist", import.meta.url)),
     ),
     baselineBinDir: resolve(env.BASELINE_BIN_DIR),
+    toolOverrides: {
+      ...(env.CELLAR_TOOL_YT_DLP === undefined ? {} : { "yt-dlp": env.CELLAR_TOOL_YT_DLP }),
+      ...(env.CELLAR_TOOL_FFMPEG === undefined ? {} : { ffmpeg: env.CELLAR_TOOL_FFMPEG }),
+      ...(env.CELLAR_TOOL_FFPROBE === undefined ? {} : { ffprobe: env.CELLAR_TOOL_FFPROBE }),
+    },
+    ytdlpPluginDirs: env.CELLAR_YTDLP_PLUGIN_DIRS.trim(),
     insecureMode,
     cfAccess:
       insecureMode || !hasCfAccess
@@ -200,4 +246,22 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
             allowedEmails: env.CF_ACCESS_ALLOWED_EMAILS as string[],
           },
   };
+}
+
+/**
+ * Resolve how to run a tool: the CELLAR_TOOL_<TOOL> override when set, else
+ * `$DATA_DIR/bin/<tool>` when it exists at call time (the updater may install
+ * it after boot), else the bare name so the OS searches PATH.
+ */
+export function toolCommand(
+  config: Pick<Config, "toolOverrides" | "binDir">,
+  tool: ToolName,
+): ToolCommand {
+  const override = config.toolOverrides[tool];
+  if (override !== undefined && override.length > 0) {
+    const [command, ...prefixArgs] = override as [string, ...string[]];
+    return { command, prefixArgs };
+  }
+  const installed = join(config.binDir, tool);
+  return { command: existsSync(installed) ? installed : tool, prefixArgs: [] };
 }

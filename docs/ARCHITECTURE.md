@@ -1305,6 +1305,13 @@ deployment-fundamental variable with empty values. Everything that is not
 deployment-fundamental is a DB setting managed in the UI. Changing `.env` on the NAS
 needs `sudo midclt call app.redeploy cellar`.
 
+Tool seams (never set in a deployment): `CELLAR_TOOL_YT_DLP`, `CELLAR_TOOL_FFMPEG` and
+`CELLAR_TOOL_FFPROBE` take a JSON array `["<command>", ...prefixArgs]` that replaces the
+tool command (tests run `scripts/fake-bin/yt-dlp.mjs` through node this way); otherwise
+`media/exec.ts` runs `$DATA_DIR/bin/<tool>` when present, else the name from `PATH`.
+`CELLAR_YTDLP_PLUGIN_DIRS` (default `/opt/cellar/yt-dlp-plugins`, empty disables) is
+passed to yt-dlp as `--plugin-dirs`.
+
 Container environment (set in the image, not `.env`): `NODE_ENV=production`,
 `DATA_DIR=/data`, `PORT=8080`, and `HOME=/data` (uid 3100 has no passwd entry, so
 tools that resolve `$HOME` would otherwise fail).
