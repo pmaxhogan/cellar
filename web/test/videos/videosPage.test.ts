@@ -22,6 +22,12 @@ import { mountGlobals } from "../helpers/mount.ts";
 import { fakeServer as abortingServer, json as reply } from "../helpers/fakeServer.ts";
 import { account, ID, ID2, idFor, listPage, location, videoRow } from "./fixtures.ts";
 
+// A small bulk limit keeps the "capped" case to a few pages of fake rows.
+vi.mock("@cellar/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@cellar/shared")>()),
+  MAX_BULK_IDS: 300,
+}));
+
 let toasts: CapturedToast[];
 
 beforeEach(() => {
@@ -466,7 +472,7 @@ describe("VideosPage selection and bulk actions", () => {
   });
 
   it("says when a selection is capped at the bulk limit", async () => {
-    const total = 10_050;
+    const total = 450;
     const server = fakeServer({
       ...lookups(),
       "GET /api/videos": (call) => {
@@ -481,14 +487,12 @@ describe("VideosPage selection and bulk actions", () => {
     const { wrapper } = await mountAt(server);
     await check(wrapper, "[data-test='select-page']");
     expect(wrapper.find("[data-action='select-all-matching']").text()).toBe(
-      "Select all 10,000 matching",
+      "Select all 300 matching",
     );
     await button(wrapper, "[data-action='select-all-matching']").trigger("click");
     await flush(10);
-    expect(wrapper.find("[data-test='selected-count']").text()).toBe("10,000 videos selected");
-    expect(wrapper.find("[data-test='selection-capped']").text()).toContain(
-      "the first 10,000 of 10,050",
-    );
+    expect(wrapper.find("[data-test='selected-count']").text()).toBe("300 videos selected");
+    expect(wrapper.find("[data-test='selection-capped']").text()).toContain("the first 300 of 450");
   });
 
   it("queues download now without duplicates", async () => {
