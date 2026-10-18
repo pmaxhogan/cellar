@@ -303,10 +303,10 @@ describe("importTakeout", () => {
         "SELECT payload_json FROM jobs WHERE type = ? ORDER BY id",
         RECHECK_BATCH_JOB,
       )
-      .map((row) => JSON.parse(row.payload_json) as { videoIds: string[]; reason: string });
-    expect(jobs.map((job) => job.videoIds.length)).toEqual([50, 50, 19]);
+      .map((row) => JSON.parse(row.payload_json) as { video_ids: string[]; reason: string });
+    expect(jobs.map((job) => job.video_ids.length)).toEqual([50, 50, 19]);
     expect(jobs[0]?.reason).toBe("takeout");
-    expect(jobs.flatMap((job) => job.videoIds)).not.toContain(ids[0]);
+    expect(jobs.flatMap((job) => job.video_ids)).not.toContain(ids[0]);
   });
 
   it("schedules a full eval pass instead of a huge id list", async () => {

@@ -819,7 +819,7 @@ export async function importTakeout(
   if (deps.registry.has(RECHECK_BATCH_JOB)) {
     counts.recheck_jobs = 0;
     for (const ids of chunks(newIds, RECHECK_CHUNK)) {
-      deps.enqueue({ type: RECHECK_BATCH_JOB, payload: { videoIds: ids, reason: "takeout" } });
+      deps.enqueue({ type: RECHECK_BATCH_JOB, payload: { video_ids: ids, reason: "takeout" } });
       counts.recheck_jobs += 1;
     }
   } else if (newIds.length > 0) {
