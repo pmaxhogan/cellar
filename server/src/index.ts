@@ -4,6 +4,7 @@ import { openDb } from "./db/db.ts";
 import { ensureInstalledAt } from "./db/kv.ts";
 import { migrate } from "./db/migrate.ts";
 import { EventBus } from "./events.ts";
+import { bootScheduler } from "./jobs/boot.ts"; // wave1B
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -34,6 +35,11 @@ async function main(): Promise<void> {
 
   const events = new EventBus();
   const app = await buildApp({ config, log, db, events, version: APP_VERSION, startedAt });
+
+  // --- wave1B scheduler boot ---
+  // Starts now; app.close() (the SIGTERM/SIGINT shutdown below) awaits its graceful stop.
+  bootScheduler(app, { config, db, log, events });
+  // --- end wave1B scheduler boot ---
 
   const reminder = config.insecureMode
     ? setInterval(() => {

@@ -7,6 +7,7 @@ import { EventBus } from "./events.ts";
 import { sharePlugin, type ShareRateLimit } from "./public/share.ts";
 import { apiRoutes } from "./routes/index.ts";
 import { toApiError } from "./routes/validate.ts";
+import { wave1bRoutes } from "./routes/wave1b.ts"; // wave1B
 import { cfAccessPlugin, type CfAccessKeyGetter } from "./security/cfAccess.ts";
 import { APP_VERSION } from "./version.ts";
 import { webPlugin } from "./web.ts";
@@ -103,6 +104,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
   });
 
   await app.register(apiRoutes, { prefix: "/api" });
+  // --- wave1B routes ---
+  await app.register(wave1bRoutes, { prefix: "/api" });
+  // --- end wave1B routes ---
   await app.register(sharePlugin, {
     prefix: "/s",
     config: ctx.config,
