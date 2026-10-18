@@ -28,7 +28,13 @@ services:
       - /mnt/tank/apps/cellar/media:/media
     read_only: true
     tmpfs:
-      - /tmp:size=512m,uid=3100,gid=3100,mode=1770,exec
+      - /tmp:size=512m,uid=3100,gid=3100,mode=1770
+      # yt-dlp_linux is a PyInstaller onefile build that unpacks itself into
+      # TMPDIR on every run, so it needs one executable scratch mount. /tmp
+      # stays noexec; only this dedicated tmpfs allows exec.
+      - /run/ytdlp:size=256m,uid=3100,gid=3100,mode=0700,exec
+    environment:
+      TMPDIR: /run/ytdlp
     cap_drop:
       - ALL
     security_opt:
