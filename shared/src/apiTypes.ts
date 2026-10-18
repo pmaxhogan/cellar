@@ -1096,3 +1096,101 @@ export const TakeoutJobResponseSchema = z.object({
 });
 export type TakeoutJobResponse = z.infer<typeof TakeoutJobResponseSchema>;
 // --- end wave5B ---
+// --- charts ---
+// ---------------------------------------------------------------------------
+// Charts API (/api/stats). Daily points are pre-aggregated by the stats_rollup
+// job into stats_daily; the summary is read live.
+//   GET  /api/stats/daily?from=YYYY-MM-DD&to=YYYY-MM-DD&location_id=<n|all>
+//        -> StatsDailyResponse (defaults: the last 90 UTC days, location 0;
+//           location_id=all answers the all-locations row plus every location)
+//   GET  /api/stats/summary -> StatsSummary
+//   POST /api/stats/rollup  -> StatsRollupResponse (today plus a 7-day backfill)
+// ---------------------------------------------------------------------------
+/** location_id 0 is the all-locations row of stats_daily. */
+export const ALL_LOCATIONS_ID = 0;
+export const STATS_DEFAULT_DAYS = 90;
+/** The widest window one request may ask for. */
+export const STATS_MAX_DAYS = 400;
+
+const UTC_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A UTC calendar day, `YYYY-MM-DD`, that round-trips through Date. */
+export const UtcDaySchema = z
+  .string()
+  .trim()
+  .regex(UTC_DAY_PATTERN, "Use YYYY-MM-DD.")
+  .refine((day) => {
+    const parsed = Date.parse(`${day}T00:00:00Z`);
+    return !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 10) === day;
+  }, "Not a calendar day.");
+
+export const StatsDailyQuerySchema = z.object({
+  from: UtcDaySchema.optional(),
+  to: UtcDaySchema.optional(),
+  location_id: z
+    .union([z.literal("all"), z.coerce.number().int().nonnegative()])
+    .default(ALL_LOCATIONS_ID),
+});
+export type StatsDailyQuery = z.infer<typeof StatsDailyQuerySchema>;
+export type StatsDailyQueryInput = z.input<typeof StatsDailyQuerySchema>;
+
+export const StatsDailyPointSchema = z.object({
+  day: z.string(),
+  location_id: z.number().int().nonnegative(),
+  bytes_used: z.number().int().nonnegative(),
+  downloads: z.number().int().nonnegative(),
+  catalog: z.number().int().nonnegative(),
+  gone: z.number().int().nonnegative(),
+  api_units: z.number().int().nonnegative(),
+});
+export type StatsDailyPoint = z.infer<typeof StatsDailyPointSchema>;
+
+export const StatsLocationRefSchema = z.object({
+  id: z.number().int(),
+  label: z.string(),
+});
+export type StatsLocationRef = z.infer<typeof StatsLocationRefSchema>;
+
+export const StatsDailyResponseSchema = z.object({
+  /** The resolved window, inclusive, so a client can draw empty days. */
+  from: z.string(),
+  to: z.string(),
+  /** Ordered by day, then location_id. */
+  points: z.array(StatsDailyPointSchema),
+  /** Every registered location, enabled or not, so old points stay labelled. */
+  locations: z.array(StatsLocationRefSchema),
+});
+export type StatsDailyResponse = z.infer<typeof StatsDailyResponseSchema>;
+
+export const StatsLocationBytesSchema = z.object({
+  id: z.number().int(),
+  label: z.string(),
+  enabled: z.boolean(),
+  bytes_used: z.number().int().nonnegative(),
+  /** 0 = no quota set. */
+  quota_bytes: z.number().int().nonnegative(),
+});
+export type StatsLocationBytes = z.infer<typeof StatsLocationBytesSchema>;
+
+export const StatsSummarySchema = z.object({
+  /** Catalog size: every known video. */
+  videos: z.number().int().nonnegative(),
+  /** Videos with a current video or audio file on disk. */
+  downloaded: z.number().int().nonnegative(),
+  gone: z.number().int().nonnegative(),
+  bytes_by_location: z.array(StatsLocationBytesSchema),
+  api_units_today: z.number().int().nonnegative(),
+  api_units_budget: z.number().int().nonnegative(),
+  downloads_7d: z.number().int().nonnegative(),
+  downloads_30d: z.number().int().nonnegative(),
+});
+export type StatsSummary = z.infer<typeof StatsSummarySchema>;
+
+export const StatsRollupResponseSchema = z.object({
+  /** stats_daily rows written (every day times every location row). */
+  points: z.number().int().nonnegative(),
+  from: z.string(),
+  to: z.string(),
+});
+export type StatsRollupResponse = z.infer<typeof StatsRollupResponseSchema>;
+// --- end charts ---
