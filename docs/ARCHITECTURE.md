@@ -1801,8 +1801,8 @@ Details never carry credentials (proxies are named by label only). Checks:
 | POST | `/api/channels` | admin | `{ ref }`: add a manual channel by URL / handle / id; 201 new, 200 already tracked |
 | DELETE | `/api/channels/:id` | admin | stop following a manual channel; 204 (409 when only an account subscription holds it) |
 | GET | `/api/videos` | admin | paged list: sort/filter/`q` (FTS)/source/account/status/location/date range (see "Videos API") |
-| GET | `/api/videos/:id` | admin | one video with its effective settings, overrides, media rows, thumbnails and share links |
-| GET | `/api/videos/:id/history` | admin | `video_changes` timeline, newest first (`page`, `perPage`, `field`) |
+| GET | `/api/videos/:id` | admin | one video with its effective settings, overrides, media rows, thumbnails, share links and previous titles |
+| GET | `/api/videos/:id/history` | admin | `video_changes` timeline, newest first (`page`, `perPage`, `field`, `counters`) |
 | GET | `/api/videos/:id/stats` | admin | counter time series for charts (`from`, `to`) |
 | GET, HEAD | `/api/videos/:id/media/:mediaId` | admin | stream a media file, HTTP Range supported; `?download=1` sends it as an attachment |
 | GET, HEAD | `/api/videos/:id/captions/:lang` | admin | WebVTT captions |
@@ -1902,9 +1902,17 @@ language, a formats summary, live status, the recheck state (`last_recheck_at`,
 `next_recheck_at`, `recheck_tier`, `consecutive_recheck_failures`), `effective` (merged
 values, provenance, matched rule ids, `evaluated_at`, `next_eval_at`), the per-video
 `overrides`, EVERY `media` row (current and older versions), the current `captions`,
-every stored `thumbnails` entry and the video's `share_links`. **History**
-(`/history?page&perPage&field`) pages the `video_changes` rows newest first as
-`{ id, field, old, new, seen_at, recheck_id }`. **Stats** (`/stats?from&to`) answers
+every stored `thumbnails` entry, the video's `share_links` and `previous_titles`:
+`[{ title, changed_at }]`, most recent first, built from the `title` rows of
+`video_changes` (each row's old value is the title that held until its `seen_at`; rows
+whose old value is empty or not text are skipped). **History**
+(`/history?page&perPage&field&counters`) pages the `video_changes` rows newest first as
+`{ id, field, old, new, seen_at, recheck_id }`. `counters=false` drops the counter rows
+(`COUNTER_FIELDS` in `shared/src/apiTypes.ts`: `views`, `likes`, `comments`,
+`ryd_dislikes`) in SQL, so paging and `total` cover only what is shown; an explicit
+`field` wins over it. Absent or `true` keeps every row. The detail page asks for
+`counters=false` and refetches with counters only when the owner toggles them on,
+since counter rows outnumber real changes by hundreds to one. **Stats** (`/stats?from&to`) answers
 `{ points: [{ at, views, likes, comments, ryd_dislikes }] }` oldest first.
 
 **Files.** `GET` / `HEAD /videos/:id/media/:mediaId` streams the file with HTTP Range

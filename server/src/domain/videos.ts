@@ -1,6 +1,8 @@
 import {
+  COUNTER_FIELDS,
   isChannelId,
   isVideoId,
+  type CounterField,
   type MediaRow,
   type VideoChangeRow,
   type VideoDetail,
@@ -472,6 +474,7 @@ export function getVideo(db: Db, id: string): VideoDetail {
       url: thumbnailUrl(id, t.variant, t.sha256),
     })),
     share_links: shares,
+    previous_titles: previousTitles(db, id),
   };
 }
 
@@ -483,6 +486,11 @@ export function getVideo(db: Db, id: string): VideoDetail {
 export function videoHistory(db: Db, id: string, query: VideoHistoryQuery): Paged<VideoChangeRow> {
   requireVideo(db, id);
   const where = new Where().add("video_id = ?", id).maybe("field = ?", query.field);
+  // Counter rows outnumber real changes by orders of magnitude, so dropping
+  // them here keeps page sizes and totals honest. An explicit field wins.
+  if (query.counters === false && query.field === undefined) {
+    where.add(`field NOT IN (${placeholders(COUNTER_FIELDS.length)})`, ...COUNTER_FIELDS);
+  }
   return pagedQuery<
     {
       id: number;
@@ -511,8 +519,22 @@ export function videoHistory(db: Db, id: string, query: VideoHistoryQuery): Page
   });
 }
 
-export const COUNTER_FIELDS = ["views", "likes", "comments", "ryd_dislikes"] as const;
-export type CounterField = (typeof COUNTER_FIELDS)[number];
+/**
+ * Earlier titles, most recent first. Each `title` row's old value is the title
+ * that held until the row's seen_at. Empty or non-text old values are skipped.
+ */
+function previousTitles(db: Db, id: string): VideoDetail["previous_titles"] {
+  return db
+    .all<{ old_json: string | null; seen_at: number }>(
+      `SELECT old_json, seen_at FROM video_changes
+        WHERE video_id = ? AND field = 'title' ORDER BY seen_at DESC, id DESC`,
+      id,
+    )
+    .flatMap((row) => {
+      const title = parseJsonColumn(row.old_json);
+      return typeof title === "string" && title !== "" ? [{ title, changed_at: row.seen_at }] : [];
+    });
+}
 
 function counterValue(json: string | null): number | null {
   const value = parseJsonColumn(json);

@@ -608,6 +608,76 @@ describe("history and stats", () => {
     );
   });
 
+  it("drops counter rows server side so paging and totals cover what is shown", () => {
+    for (let day = 1; day <= 5; day += 1) {
+      applyVideoDiff(db, vid("h"), { views: day * 10, likes: day + 1 }, { seenAt: T0 + day * DAY });
+    }
+    applyVideoDiff(db, vid("h"), { title: "Two" }, { seenAt: T0 + 2 * DAY + 1 });
+    applyVideoDiff(db, vid("h"), { ryd_dislikes: 4 }, { seenAt: T0 + 6 * DAY });
+    applyVideoDiff(db, vid("h"), { description: "D" }, { seenAt: T0 + 7 * DAY });
+    applyVideoDiff(db, vid("h"), { description: "E" }, { seenAt: T0 + 8 * DAY });
+    const all = videoHistory(db, vid("h"), VideoHistoryQuerySchema.parse({}));
+    expect(all.total).toBe(13);
+    const included = videoHistory(db, vid("h"), VideoHistoryQuerySchema.parse({ counters: "1" }));
+    expect(included.total).toBe(13);
+    const first = videoHistory(
+      db,
+      vid("h"),
+      VideoHistoryQuerySchema.parse({ counters: "false", perPage: "1" }),
+    );
+    expect(first.total).toBe(2);
+    expect(first.rows.map((row) => [row.field, row.new])).toEqual([["description", "E"]]);
+    const second = videoHistory(
+      db,
+      vid("h"),
+      VideoHistoryQuerySchema.parse({ counters: "false", perPage: "1", page: "2" }),
+    );
+    expect(second.rows.map((row) => [row.field, row.old, row.new])).toEqual([
+      ["title", "One", "Two"],
+    ]);
+    // An explicit field wins over the counter filter.
+    const views = videoHistory(
+      db,
+      vid("h"),
+      VideoHistoryQuerySchema.parse({ counters: "false", field: "views" }),
+    );
+    expect(views.total).toBe(5);
+  });
+
+  it("lists the previous titles on the detail, most recent first", () => {
+    expect(getVideo(db, vid("h")).previous_titles).toEqual([]);
+    applyVideoDiff(db, vid("h"), { title: "Two", views: 9 }, { seenAt: T0 + DAY });
+    applyVideoDiff(db, vid("h"), { title: null }, { seenAt: T0 + 2 * DAY });
+    applyVideoDiff(db, vid("h"), { title: "Three" }, { seenAt: T0 + 3 * DAY });
+    applyVideoDiff(db, vid("h"), { title: "One" }, { seenAt: T0 + 4 * DAY });
+    const detail = getVideo(db, vid("h"));
+    expect(detail.title).toBe("One");
+    // The null gap (title cleared, then refilled without a row) leaves no entry.
+    expect(detail.previous_titles).toEqual([
+      { title: "Three", changed_at: T0 + 4 * DAY },
+      { title: "Two", changed_at: T0 + 2 * DAY },
+      { title: "One", changed_at: T0 + DAY },
+    ]);
+  });
+
+  it("skips title rows whose old value is empty or not text", () => {
+    for (const [old, at] of [
+      ['""', 1],
+      ["5", 2],
+      ["{broken", 3],
+      ['"Kept"', 4],
+    ] as const) {
+      db.run(
+        `INSERT INTO video_changes (video_id, field, old_json, new_json, seen_at)
+         VALUES (?, 'title', ?, '"One"', ?)`,
+        vid("h"),
+        old,
+        T0 + at,
+      );
+    }
+    expect(getVideo(db, vid("h")).previous_titles).toEqual([{ title: "Kept", changed_at: T0 + 4 }]);
+  });
+
   it("serves video_stats points within from/to", () => {
     applyVideoDiff(db, vid("h"), { views: 10 }, { seenAt: T0 + DAY });
     applyVideoDiff(db, vid("h"), { views: 20, likes: 2 }, { seenAt: T0 + 2 * DAY });

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   BulkDownloadRequestSchema,
+  COUNTER_FIELDS,
+  isCounterField,
   TrashRequestSchema,
+  VideoDetailSchema,
+  VideoHistoryQuerySchema,
   VideoStatsQuerySchema,
   VideosListQuerySchema,
 } from "../src/apiTypes.ts";
@@ -46,5 +50,32 @@ describe("id lists", () => {
     expect(() => TrashRequestSchema.parse({ ids: [5] })).toThrow();
     expect(() => TrashRequestSchema.parse({ ids: "" })).toThrow();
     expect(() => BulkDownloadRequestSchema.parse({ ids: [A], template: "  " })).toThrow();
+  });
+});
+
+describe("history counters", () => {
+  it("names exactly the four tracked counters", () => {
+    expect([...COUNTER_FIELDS]).toEqual(["views", "likes", "comments", "ryd_dislikes"]);
+    expect(isCounterField("views")).toBe(true);
+    expect(isCounterField("ryd_dislikes")).toBe(true);
+    expect(isCounterField("title")).toBe(false);
+    expect(isCounterField("ryd_ratio")).toBe(false);
+  });
+
+  it("parses the counters flag on the history query", () => {
+    expect(VideoHistoryQuerySchema.parse({})).toEqual({ page: 1, perPage: 50 });
+    expect(VideoHistoryQuerySchema.parse({ counters: "false" }).counters).toBe(false);
+    expect(VideoHistoryQuerySchema.parse({ counters: "0" }).counters).toBe(false);
+    expect(VideoHistoryQuerySchema.parse({ counters: "true" }).counters).toBe(true);
+    expect(() => VideoHistoryQuerySchema.parse({ counters: "maybe" })).toThrow();
+  });
+});
+
+describe("VideoDetailSchema previous_titles", () => {
+  it("requires a title and changed_at on every entry", () => {
+    const entry = VideoDetailSchema.shape.previous_titles.element;
+    expect(entry.parse({ title: "Old", changed_at: 5 })).toEqual({ title: "Old", changed_at: 5 });
+    expect(() => entry.parse({ title: "Old" })).toThrow();
+    expect(() => entry.parse({ title: null, changed_at: 5 })).toThrow();
   });
 });

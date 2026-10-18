@@ -179,6 +179,23 @@ describe("GET /api/videos/:id and history, stats", () => {
     const page = VideoHistoryResponseSchema.parse(history.json());
     expect(page.total).toBe(2);
     expect(page.rows).toHaveLength(1);
+    const changes = await temp.app.inject({
+      method: "GET",
+      url: `/api/videos/${A}/history?counters=false`,
+    });
+    const changesPage = VideoHistoryResponseSchema.parse(changes.json());
+    expect(changesPage.total).toBe(1);
+    expect(changesPage.rows.map((row) => row.field)).toEqual(["title"]);
+    const bad = await temp.app.inject({
+      method: "GET",
+      url: `/api/videos/${A}/history?counters=maybe`,
+    });
+    expect(bad.statusCode).toBe(400);
+    const detail = VideoDetailSchema.parse(
+      (await temp.app.inject({ method: "GET", url: `/api/videos/${A}` })).json(),
+    );
+    expect(detail.title).toBe("Renamed");
+    expect(detail.previous_titles.map((entry) => entry.changed_at)).toEqual([T0 + 1]);
     const stats = await temp.app.inject({
       method: "GET",
       url: `/api/videos/${A}/stats?from=2025-12-31&to=${String(T0 + 10)}`,

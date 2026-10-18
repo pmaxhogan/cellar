@@ -184,6 +184,7 @@ export function videoDetail(overrides: Partial<VideoDetail> = {}): VideoDetail {
     ],
     thumbnails: [],
     share_links: [],
+    previous_titles: [],
     ...overrides,
   };
 }

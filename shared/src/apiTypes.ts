@@ -514,7 +514,7 @@ export type ToolRollbackRequest = z.infer<typeof ToolRollbackRequestSchema>;
 // Videos (server/src/domain/videos.ts, videoFiles.ts, bulk.ts; routes/videos.ts).
 //   GET  /api/videos?VideosListQuery                 -> VideosListResponse
 //   GET  /api/videos/:id                             -> VideoDetail
-//   GET  /api/videos/:id/history?page&perPage&field  -> VideoHistoryResponse
+//   GET  /api/videos/:id/history?page&perPage&field&counters -> VideoHistoryResponse
 //   GET  /api/videos/:id/stats?from&to               -> VideoStatsResponse
 //   GET  /api/videos/:id/media/:mediaId[?download=1] -> the file (HTTP Range, HEAD)
 //   GET  /api/videos/:id/captions/:lang              -> text/vtt
@@ -757,13 +757,31 @@ export const VideoDetailSchema = VideoRowSchema.extend({
   /** Every stored thumbnail, newest first. */
   thumbnails: z.array(VideoThumbnailSchema),
   share_links: z.array(VideoShareLinkSchema),
+  /**
+   * Earlier titles, most recent first, from the `title` rows of video_changes:
+   * each is a row's old value and `changed_at` is when the next title was seen.
+   */
+  previous_titles: z.array(z.object({ title: z.string(), changed_at: z.number().int() })),
 });
 export type VideoDetail = z.infer<typeof VideoDetailSchema>;
+
+/**
+ * The counter fields of video_changes: they tick on most rechecks, belong in
+ * the stats chart, and are left out of the history timeline unless asked for.
+ */
+export const COUNTER_FIELDS = ["views", "likes", "comments", "ryd_dislikes"] as const;
+export type CounterField = (typeof COUNTER_FIELDS)[number];
+
+export function isCounterField(field: string): field is CounterField {
+  return (COUNTER_FIELDS as readonly string[]).includes(field);
+}
 
 export const VideoHistoryQuerySchema = z.object({
   page: pageParam,
   perPage: perPageParam,
   field: z.string().min(1).max(64).optional(),
+  /** false drops counter rows (an explicit `field` wins); absent or true keeps them. */
+  counters: queryBool,
 });
 export type VideoHistoryQuery = z.infer<typeof VideoHistoryQuerySchema>;
 
