@@ -43,6 +43,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: "Channels" },
   },
   {
+    path: "/takeout",
+    name: "takeout",
+    component: () => import("../pages/TakeoutPage.vue"),
+    meta: { title: "Takeout" },
+  },
+  {
     path: "/locations",
     name: "locations",
     component: () => import("../pages/LocationsPage.vue"),
@@ -113,6 +119,7 @@ export const NAV_LINKS: NavLink[] = [
   { to: "/rules", label: "Rules", icon: "rules" },
   { to: "/accounts", label: "Accounts", icon: "accounts" },
   { to: "/channels", label: "Channels", icon: "channels" },
+  { to: "/takeout", label: "Takeout", icon: "folder" },
   { to: "/locations", label: "Locations", icon: "locations" },
   { to: "/proxies", label: "Proxies", icon: "proxies" },
   { to: "/shares", label: "Share links", icon: "shares" },

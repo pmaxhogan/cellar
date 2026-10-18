@@ -12,6 +12,7 @@ const NAV: { label: string; path: string; heading: string }[] = [
   { label: "Rules", path: "/rules", heading: "Rules" },
   { label: "Accounts", path: "/accounts", heading: "Accounts" },
   { label: "Channels", path: "/channels", heading: "Channels" },
+  { label: "Takeout", path: "/takeout", heading: "Takeout" },
   { label: "Locations", path: "/locations", heading: "Locations" },
   { label: "Proxies", path: "/proxies", heading: "Proxies" },
   { label: "Share links", path: "/shares", heading: "Share links" },

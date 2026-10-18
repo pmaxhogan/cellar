@@ -33,3 +33,6 @@ smoke-data/
 *.tar.gz
 takeout-*
 Takeout/
+# ...but the importer's own source dirs are code (core.ignorecase makes Takeout/ match them)
+!web/src/components/takeout/
+!web/test/takeout/
