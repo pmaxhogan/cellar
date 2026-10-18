@@ -1061,8 +1061,12 @@ One `Scheduler` (amber shape), `server/src/jobs/scheduler.ts`:
 - Tick every 5 s. Periodic work is registered with `scheduler.every(type, ms, fn)` in an
   in-memory min-heap whose last-run times persist in `kv` (`schedule_last:*`). Hourly:
   eval pass -> reap. Daily: log retention (`logs_retention`, maintenance class), tool
-  update check (first run 5 minutes after boot), stats rollup. The self-check runs at
-  boot and every `selfcheck.interval_hours`.
+  update check (first run 5 minutes after boot), stats rollup (`stats_rollup`,
+  maintenance class: the daily schedule queues it for the next 00:10 UTC, a boot with
+  no row for today queues it at once, and each run rolls up today and recomputes the
+  two days before; a past day keeps its `bytes_used` snapshot because reaped files
+  leave no rows to rebuild it from). The self-check runs at boot and every
+  `selfcheck.interval_hours`.
 
 Job types: `ingest_history`, `ingest_watch_later`, `ingest_liked`,
 `ingest_subscriptions`, `ingest_channel_uploads`, `recheck_batch`, `takeout_import`,
@@ -1460,6 +1464,10 @@ Details never carry credentials (proxies are named by label only). Checks:
 | POST | `/api/checks/run` | admin | run the self-check now; answers the new check row |
 | GET | `/api/stats/daily` | admin | pre-aggregated daily chart points |
 | GET | `/api/tools` | admin | yt-dlp / ffmpeg versions and update state, `js_runtime`, `pot_provider_url`, `auto_update`, `ffmpeg_release_tag` |
+| GET | `/api/stats/daily` | admin | pre-aggregated daily chart points: `from`, `to` (`YYYY-MM-DD` UTC, default the last 90 days, at most 400), `location_id` (default 0 = all locations; `all` = every row); answers `{ from, to, points, locations }` |
+| GET | `/api/stats/summary` | admin | live counts for the Charts tiles: videos, downloaded, gone, bytes per location against its quota, API units today against the budget, downloads in 7 and 30 days |
+| POST | `/api/stats/rollup` | admin | roll up today plus a 7-day backfill now; answers `{ points, from, to }` |
+| GET | `/api/tools` | admin | yt-dlp / ffmpeg versions and update state, `js_runtime`, `pot_provider_url`, `auto_update` |
 | POST | `/api/tools/update` | admin | `{ tool?, force? }`: check for updates now (and apply them when `tools.auto_update` is on); answers the tools response plus `outcomes` |
 | POST | `/api/tools/rollback` | admin | `{ tool }`: swap a tool back to its `.prev` build; 412 when there is none |
 | POST | `/api/takeout` | admin | multipart upload of a Takeout archive (zip / tgz) / json / csv |
