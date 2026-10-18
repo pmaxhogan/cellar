@@ -3,3 +3,6 @@ export * from "./safeRegex.ts";
 export * from "./effects.ts";
 export * from "./ast.ts";
 export * from "./evaluate.ts";
+export * from "./rule.ts";
+export * from "./merge.ts";
+export * from "./nextFlip.ts";
