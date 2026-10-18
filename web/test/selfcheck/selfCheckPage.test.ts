@@ -5,6 +5,7 @@ import SelfCheckPage from "../../src/pages/SelfCheckPage.vue";
 import {
   checkPrefix,
   groupResults,
+  latestCheck,
   listChecks,
   worstLevel,
   type CheckResult,
@@ -59,9 +60,7 @@ async function mountPage(fake: FakeServer) {
 
 function server(latest: CheckRow | null, history: CheckRow[] = latest === null ? [] : [latest]) {
   return fakeServer()
-    .on("GET", "/api/checks/latest", () =>
-      latest === null ? apiError(404, "No self-check has run yet.", "not_found") : json(latest),
-    )
+    .on("GET", "/api/checks/latest", () => json({ row: latest }))
     .on("GET", "/api/checks", () => json({ rows: history }));
 }
 
@@ -100,6 +99,15 @@ describe("grouping", () => {
     await listChecks(fake.api, 5);
     expect(fake.calls[0]!.query.get("limit")).toBe("5");
   });
+
+  it("reads the latest run from the { row } envelope, null before the first run", async () => {
+    const run = makeRun({ id: 7 });
+    expect(await latestCheck(server(run).api)).toEqual(run);
+    expect(await latestCheck(server(null).api)).toBeNull();
+    // A bare row is not the contract: it is reported, not silently accepted.
+    const bare = fakeServer().on("GET", "/api/checks/latest", () => json(run));
+    await expect(latestCheck(bare.api)).rejects.toMatchObject({ problem: "invalid_response" });
+  });
 });
 
 describe("Self-check page", () => {
@@ -126,6 +134,13 @@ describe("Self-check page", () => {
     expect(wrapper.find(".empty-state h2").text()).toBe("No checks have run");
     expect(wrapper.find(".empty-state [data-icon='selfcheck']").exists()).toBe(true);
     expect(wrapper.find(".error-state").exists()).toBe(false);
+  });
+
+  it("opens on the latest run without an error, as the server sends it", async () => {
+    const wrapper = await mountPage(server(makeRun({ id: 4, trigger: "schedule" })));
+    expect(wrapper.find(".error-state").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Could not load the latest self-check");
+    expect(wrapper.find("[data-summary]").text()).toContain("(schedule)");
   });
 
   it("runs the self-check, shows a spinner, and replaces the grid", async () => {
@@ -201,7 +216,9 @@ describe("Self-check page", () => {
   it("shows an error state for the latest run, and a note for the history", async () => {
     let fail = true;
     const fake = fakeServer()
-      .on("GET", "/api/checks/latest", () => (fail ? apiError(500, "down") : json(makeRun())))
+      .on("GET", "/api/checks/latest", () =>
+        fail ? apiError(500, "down") : json({ row: makeRun() }),
+      )
       .on("GET", "/api/checks", () =>
         fail ? apiError(500, "History is down.") : json({ rows: [] }),
       );

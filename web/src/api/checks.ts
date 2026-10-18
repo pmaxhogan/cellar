@@ -1,37 +1,21 @@
-import { z } from "zod";
+import {
+  CheckRowSchema,
+  ChecksListResponseSchema,
+  LatestCheckResponseSchema,
+  type CheckLevel,
+  type CheckResult,
+  type CheckRow,
+} from "@cellar/shared";
 import { buildQuery, type ApiClient } from "./client.ts";
 
 /**
- * Self-check API (/api/checks). Local schemas until the wave1C block of
- * shared/src/apiTypes.ts lands with the same shape.
+ * Self-check API (/api/checks), parsed with the shared wave1C contracts.
  *
  *   GET  /api/checks?limit   -> { rows: CheckRow[] }
- *   GET  /api/checks/latest  -> CheckRow
+ *   GET  /api/checks/latest  -> { row: CheckRow | null }
  *   POST /api/checks/run     -> CheckRow
  */
-export const CHECK_LEVELS = ["ok", "warn", "fail", "skip"] as const;
-export type CheckLevel = (typeof CHECK_LEVELS)[number];
-
-export const CheckResultSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  level: z.enum(CHECK_LEVELS),
-  detail: z.string(),
-  value: z.unknown().optional(),
-  took_ms: z.number(),
-});
-export type CheckResult = z.infer<typeof CheckResultSchema>;
-
-export const CheckRowSchema = z.object({
-  id: z.number().int(),
-  run_at: z.number(),
-  trigger: z.string(),
-  ok: z.boolean(),
-  results: z.array(CheckResultSchema),
-});
-export type CheckRow = z.infer<typeof CheckRowSchema>;
-
-export const ChecksListResponseSchema = z.object({ rows: z.array(CheckRowSchema) });
+export type { CheckLevel, CheckResult, CheckRow };
 
 export async function listChecks(api: ApiClient, limit = 30): Promise<CheckRow[]> {
   const result = await api.request(`/api/checks${buildQuery({ limit })}`, {
@@ -40,8 +24,10 @@ export async function listChecks(api: ApiClient, limit = 30): Promise<CheckRow[]
   return result.rows;
 }
 
-export function latestCheck(api: ApiClient): Promise<CheckRow> {
-  return api.request("/api/checks/latest", { schema: CheckRowSchema });
+/** The newest run, or null when the self-check has never run. */
+export async function latestCheck(api: ApiClient): Promise<CheckRow | null> {
+  const result = await api.request("/api/checks/latest", { schema: LatestCheckResponseSchema });
+  return result.row;
 }
 
 export function runCheck(api: ApiClient): Promise<CheckRow> {

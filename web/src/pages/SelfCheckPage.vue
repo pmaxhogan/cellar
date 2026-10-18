@@ -41,17 +41,11 @@ const shown = computed(() => viewing.value ?? latest.value);
 
 async function loadLatest(): Promise<void> {
   try {
-    latest.value = (await latestCheck(api)) ?? null;
+    // `{ row: null }` means no run has been recorded yet: the empty state.
+    latest.value = await latestCheck(api);
     error.value = null;
   } catch (cause) {
-    const normalized = normalizeError(cause);
-    // 404 means no run has been recorded yet: an empty state, not an error.
-    if (normalized.status === 404) {
-      latest.value = null;
-      error.value = null;
-    } else {
-      error.value = normalized;
-    }
+    error.value = normalizeError(cause);
   }
 }
 

@@ -108,11 +108,8 @@ test("the self-check page runs every check and the fake tools pass", async ({ pa
 });
 
 test("the latest run is shown as soon as the page opens", async ({ page, api }) => {
-  // Known bug: GET /api/checks/latest answers { row: CheckRow | null } while
-  // web/src/api/checks.ts latestCheck() parses the body as a bare CheckRow, so
-  // the page opens on "Could not load the latest self-check" (invalid_response)
-  // until "Run self-check now" replaces it. Remove test.fail() once fixed.
-  test.fail();
+  // GET /api/checks/latest answers { row: CheckRow | null }; the page reads the
+  // envelope and opens on the stored run, not on an error.
   const latest = await api.get<{ row: { id: number } | null }>("/api/checks/latest");
   expect(latest.row).not.toBeNull();
 
