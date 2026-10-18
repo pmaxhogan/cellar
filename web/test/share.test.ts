@@ -114,26 +114,14 @@ describe("the 404 view", () => {
   });
 });
 
-describe("the player placeholder", () => {
-  it("renders when the server injected share data", () => {
+// The player itself is covered in test/share/player.test.ts.
+describe("a payload that is not the share contract", () => {
+  it("renders the same 404 view as no payload", () => {
+    mountShare(document, `/s/${TOKEN}`);
+    const missing = document.body.innerHTML;
     injectData('{"title":"Cellar tour"}');
-
-    expect(mountShare(document, `/s/${TOKEN}`)).toBe("player");
-    expect(document.querySelector("h1")?.textContent).toBe("Cellar tour");
-    expect(document.title).toBe("Cellar tour");
-  });
-
-  it("never interprets the payload as HTML", () => {
-    injectData(JSON.stringify({ title: "<img src=x onerror=alert(1)>" }));
-    mountShare(document, `/s/${TOKEN}`);
-    expect(document.querySelector("img")).toBeNull();
-    expect(document.querySelector("h1")?.textContent).toBe("<img src=x onerror=alert(1)>");
-  });
-
-  it("uses a generic title when the payload has none", () => {
-    injectData("{}");
-    mountShare(document, `/s/${TOKEN}`);
-    expect(document.querySelector("h1")?.textContent).toBe("Shared video");
+    expect(mountShare(document, `/s/${TOKEN}`)).toBe("not-found");
+    expect(document.body.innerHTML).toBe(missing);
   });
 });
 

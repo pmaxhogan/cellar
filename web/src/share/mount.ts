@@ -12,8 +12,10 @@
  * tell them apart.
  *
  * Everything is built with createElement + textContent. Nothing from the URL or
- * the payload is ever parsed as HTML.
+ * the payload is ever parsed as HTML. The player itself is ./player.ts.
  */
+import { parseShareData } from "./data.ts";
+import { renderPlayer } from "./player.ts";
 
 export const SHARE_DATA_ID = "share-data";
 export const NOT_FOUND_TITLE = "Not found";
@@ -21,11 +23,8 @@ export const NOT_FOUND_MESSAGE = "This link does not exist, has expired, or was 
 
 export type ShareView = "player" | "not-found";
 
-/**
- * The injected payload. Wave 5 narrows this to the player contract; it is
- * validated by hand there because zod alone would multiply this bundle's size.
- */
-export type ShareData = Record<string, unknown>;
+/** The injected payload before validation (see ./data.ts for the checked shape). */
+export type RawShareData = Record<string, unknown>;
 
 const TOKEN_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
 
@@ -35,13 +34,13 @@ export function shareTokenFromPath(pathname: string): string | null {
 }
 
 /** The server-injected payload, or null when it is absent or unreadable. */
-export function readShareData(doc: Document): ShareData | null {
+export function readShareData(doc: Document): RawShareData | null {
   const node = doc.getElementById(SHARE_DATA_ID);
   if (node === null || node.getAttribute("type") !== "application/json") return null;
   try {
     const value: unknown = JSON.parse(node.textContent ?? "");
     if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-    return value as ShareData;
+    return value as RawShareData;
   } catch {
     return null;
   }
@@ -71,23 +70,13 @@ export function renderNotFound(root: HTMLElement, doc: Document): void {
 }
 
 /**
- * Placeholder for the wave 5 player (video with captions and speed control,
- * metadata, download buttons). It renders only the title so the data path is
- * wired and tested end to end before the player exists.
+ * Pick and render the view for this page load. A payload that is malformed
+ * or names another token renders the 404 view, exactly like an absent one.
  */
-export function renderPlayer(root: HTMLElement, doc: Document, data: ShareData): void {
-  const title = typeof data["title"] === "string" && data["title"] !== "" ? data["title"] : null;
-  doc.title = title ?? "Shared video";
-  const main = element(doc, "main", "share-player");
-  main.append(element(doc, "h1", "share-player__title", title ?? "Shared video"));
-  root.replaceChildren(main);
-}
-
-/** Pick and render the view for this page load. */
 export function mountShare(doc: Document, pathname: string): ShareView {
   const root = doc.getElementById("app") ?? doc.body;
   const token = shareTokenFromPath(pathname);
-  const data = token === null ? null : readShareData(doc);
+  const data = token === null ? null : parseShareData(readShareData(doc), token);
   if (data === null) {
     renderNotFound(root, doc);
     return "not-found";
