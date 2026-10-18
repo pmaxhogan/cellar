@@ -41,6 +41,7 @@ const IMPLEMENTED = new Set([
   "/accounts",
   "/activity",
   "/channels",
+  "/charts",
   "/locations",
   "/notifications",
   "/proxies",
