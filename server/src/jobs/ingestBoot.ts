@@ -47,6 +47,12 @@ export const RECHECK_DUE_LIMIT = 200;
 /** The leftover class runs only while today's project units stay under this share. */
 export const LEFTOVER_BUDGET_SHARE = 0.8;
 export const INGEST_LAST_KV_PREFIX = "ingest_last:";
+/**
+ * Feeds and channel polls outrank the immediate rechecks of newly seen videos
+ * (RECHECK_NEW_PRIORITY): a steady stream of rechecks must never starve the
+ * jobs that discover videos in the first place.
+ */
+export const FEED_PRIORITY = 10;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 
@@ -117,14 +123,24 @@ export const ACCOUNT_FEEDS: readonly AccountFeed[] = [
     setting: "ingest.history_minutes",
     unitMs: MINUTE_MS,
     accounts: cookieAccountIds,
-    job: (accountId) => ({ type: INGEST_HISTORY_JOB, accountId, dedupe: true }),
+    job: (accountId) => ({
+      type: INGEST_HISTORY_JOB,
+      accountId,
+      priority: FEED_PRIORITY,
+      dedupe: true,
+    }),
   },
   {
     name: "watch_later",
     setting: "ingest.watch_later_minutes",
     unitMs: MINUTE_MS,
     accounts: cookieAccountIds,
-    job: (accountId) => ({ type: INGEST_WATCH_LATER_JOB, accountId, dedupe: true }),
+    job: (accountId) => ({
+      type: INGEST_WATCH_LATER_JOB,
+      accountId,
+      priority: FEED_PRIORITY,
+      dedupe: true,
+    }),
   },
   {
     name: "liked",
@@ -134,6 +150,7 @@ export const ACCOUNT_FEEDS: readonly AccountFeed[] = [
     job: (accountId) => ({
       type: INGEST_LIKED_JOB,
       payload: { account_id: accountId },
+      priority: FEED_PRIORITY,
       dedupe: true,
     }),
   },
@@ -145,6 +162,7 @@ export const ACCOUNT_FEEDS: readonly AccountFeed[] = [
     job: (accountId) => ({
       type: INGEST_SUBSCRIPTIONS_JOB,
       payload: { account_id: accountId },
+      priority: FEED_PRIORITY,
       dedupe: true,
     }),
   },
@@ -203,6 +221,7 @@ export function tickChannelUploads(deps: ScheduleDeps, force = false): number {
     deps.enqueue({
       type: INGEST_CHANNEL_UPLOADS_JOB,
       payload: { channel_id: channelId },
+      priority: FEED_PRIORITY,
       dedupe: true,
     });
   }
