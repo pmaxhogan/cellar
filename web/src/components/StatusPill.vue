@@ -22,7 +22,7 @@ const connection = computed(() =>
 </script>
 
 <template>
-  <div class="status-pill" :class="`tone-${tone}`" :title="connection">
+  <div class="status-pill" :class="`tone-${tone}`" :title="connection" data-test="status-pill">
     <AppIcon :name="icon" :size="14" />
     <span class="status-pill__text" aria-live="polite">{{ summary }}</span>
     <span class="sr-only">{{ connection }}</span>
