@@ -14,6 +14,7 @@ import { wave1bRoutes } from "./routes/wave1b.ts"; // wave1B
 import { wave2bRoutes } from "./routes/wave2b.ts"; // wave2B
 import { videoRoutes } from "./routes/videos.ts"; // wave2C
 import { shareRoutes } from "./routes/shares.ts"; // wave5A
+import { takeoutRoutes } from "./routes/takeout.ts"; // wave5B
 import { cfAccessPlugin, type CfAccessKeyGetter } from "./security/cfAccess.ts";
 import { APP_VERSION } from "./version.ts";
 import { webPlugin } from "./web.ts";
@@ -132,6 +133,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
   // --- wave5A routes ---
   await app.register(shareRoutes, { prefix: "/api" });
   // --- end wave5A routes ---
+  // --- wave5B routes ---
+  await app.register(takeoutRoutes, { prefix: "/api" });
+  // --- end wave5B routes ---
   await app.register(sharePlugin, {
     prefix: "/s",
     config: ctx.config,

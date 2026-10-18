@@ -14,6 +14,7 @@ import { jobRegistry } from "./jobs/types.ts"; // wave2B
 import { bootPipeline } from "./jobs/pipelineBoot.ts"; // wave3
 import { createPipelineDeps } from "./jobs/pipelineWiring.ts"; // wave3
 import { bootIngestion, budgetHooks } from "./jobs/ingestBoot.ts"; // wave2A
+import { registerTakeoutHandler } from "./jobs/handlers/takeout.ts"; // wave5B
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -84,6 +85,15 @@ async function main(): Promise<void> {
   // is the orchestrator's change to the wave1B block.
   bootIngestion({ config, db, log: log.child({ mod: "ingest" }), events, scheduler });
   // --- end wave2A boot ---
+
+  // --- wave5B boot ---
+  registerTakeoutHandler(jobRegistry, {
+    events,
+    tmpDir: config.tmpDir,
+    registry: jobRegistry,
+    enqueue: (input) => scheduler.enqueue(input),
+  });
+  // --- end wave5B boot ---
 
   const reminder = config.insecureMode
     ? setInterval(() => {
