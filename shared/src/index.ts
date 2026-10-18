@@ -5,3 +5,4 @@ export * from "./settingsRegistry.ts";
 export * from "./formats.ts";
 export * from "./takeout.ts";
 export * from "./filenameTemplate.ts";
+export * from "./rules/index.ts";
