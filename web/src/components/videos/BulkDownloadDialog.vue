@@ -72,9 +72,10 @@ const blocked = computed(
     nothingToSend.value ||
     folderRunning.value,
 );
-const kindHint = computed(
-  () => BULK_KIND_OPTIONS.find((option) => option.value === kind.value)?.hint ?? "",
-);
+const KIND_HINTS = Object.fromEntries(
+  BULK_KIND_OPTIONS.map((option) => [option.value, option.hint]),
+) as Record<BulkKind, string>;
+const kindHint = computed(() => KIND_HINTS[kind.value]);
 const doneCount = computed(() => folderItems.value.filter((item) => item.state === "done").length);
 
 async function runEstimate(): Promise<void> {
@@ -116,8 +117,8 @@ function close(): void {
   emit("update:visible", false);
 }
 
+// Both buttons are disabled while `blocked`, so neither handler re-checks it.
 function downloadZip(): void {
-  if (blocked.value) return;
   submitZipDownload({ ids: props.ids, kind: kind.value, template: template.value });
   toast.info(
     "Download started",
@@ -127,7 +128,6 @@ function downloadZip(): void {
 }
 
 async function saveToFolder(): Promise<void> {
-  if (blocked.value) return;
   const directory = await pickDirectory();
   if (directory === null) return;
   const controller = new AbortController();
@@ -191,8 +191,6 @@ function itemLabel(item: FolderItem): string {
       return "no files";
     case "failed":
       return item.error ?? "failed";
-    case "pending":
-      return "waiting";
   }
 }
 

@@ -30,23 +30,28 @@ const element = ref<HTMLMediaElement | null>(null);
 const speed = ref(1);
 
 const current = computed(() => {
-  const video = props.media.find((row) => row.is_current && row.kind === "video");
-  if (video !== undefined) return { row: video, audioOnly: false };
-  const audio = props.media.find((row) => row.is_current && row.kind === "audio");
-  return audio === undefined ? null : { row: audio, audioOnly: true };
+  const row =
+    props.media.find((candidate) => candidate.is_current && candidate.kind === "video") ??
+    props.media.find((candidate) => candidate.is_current && candidate.kind === "audio");
+  if (row === undefined) return null;
+  return { row, audioOnly: row.kind === "audio", src: mediaUrl(props.videoId, row.id) };
 });
-
-const source = computed(() =>
-  current.value === null ? null : mediaUrl(props.videoId, current.value.row.id),
-);
 
 /** Only the first English track is on by default; the rest are one click away. */
 const defaultTrack = computed(() =>
   props.captions.findIndex((track) => /^en(?:[-_]|$)/i.test(track.lang)),
 );
 
+/**
+ * The media element. Everything below runs from the speed menu or a key on the
+ * player frame, both of which only exist while the element is mounted.
+ */
+function mediaElement(): HTMLMediaElement {
+  return element.value as HTMLMediaElement;
+}
+
 function applySpeed(): void {
-  if (element.value !== null) element.value.playbackRate = speed.value;
+  mediaElement().playbackRate = speed.value;
 }
 
 watch(speed, applySpeed);
@@ -56,38 +61,34 @@ function setSpeed(value: number): void {
 }
 
 function stepSpeed(direction: 1 | -1): void {
-  const index = SPEEDS.indexOf(speed.value);
-  const next = SPEEDS[Math.min(SPEEDS.length - 1, Math.max(0, index + direction))];
-  if (next !== undefined) setSpeed(next);
+  const index = Math.min(SPEEDS.length - 1, Math.max(0, SPEEDS.indexOf(speed.value) + direction));
+  setSpeed(SPEEDS[index] as number);
 }
 
 function seek(delta: number): void {
-  const el = element.value;
-  if (el === null) return;
+  const el = mediaElement();
   const max = Number.isFinite(el.duration) ? el.duration : Number.POSITIVE_INFINITY;
   el.currentTime = Math.min(max, Math.max(0, el.currentTime + delta));
 }
 
 function togglePlay(): void {
-  const el = element.value;
-  if (el === null) return;
+  const el = mediaElement();
   if (el.paused) {
-    void el.play()?.catch(() => undefined);
+    // A rejected play() (autoplay policy, no source yet) needs no handling here.
+    void el.play().catch(() => undefined);
   } else {
     el.pause();
   }
 }
 
 function volume(delta: number): void {
-  const el = element.value;
-  if (el === null) return;
+  const el = mediaElement();
   el.volume = Math.min(1, Math.max(0, Math.round((el.volume + delta) * 10) / 10));
 }
 
+/** Keys typed into a field (or anything editable) inside the player are not shortcuts. */
 function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+  return (target as Element).closest("input, textarea, select, [contenteditable='true']") !== null;
 }
 
 function onKey(event: KeyboardEvent): void {
@@ -113,14 +114,14 @@ function onKey(event: KeyboardEvent): void {
 
 <template>
   <div class="player" data-test="player">
-    <div v-if="current && source" class="player__frame" tabindex="0" @keydown="onKey">
+    <div v-if="current" class="player__frame" tabindex="0" @keydown="onKey">
       <audio
         v-if="current.audioOnly"
         ref="element"
         class="player__audio"
         controls
         preload="metadata"
-        :src="source"
+        :src="current.src"
         data-test="player-audio"
         @loadedmetadata="applySpeed"
       />
@@ -132,7 +133,7 @@ function onKey(event: KeyboardEvent): void {
         preload="metadata"
         playsinline
         :poster="poster ?? undefined"
-        :src="source"
+        :src="current.src"
         data-test="player-video"
         @loadedmetadata="applySpeed"
       >

@@ -91,7 +91,7 @@ function isoDay(epochMs: number | null): string | null {
 }
 
 function extOf(relPath: string): string {
-  const base = relPath.split("/").pop() ?? "";
+  const base = relPath.slice(relPath.lastIndexOf("/") + 1);
   const dot = base.lastIndexOf(".");
   return dot <= 0 ? "" : base.slice(dot + 1);
 }
@@ -163,7 +163,7 @@ export function planVideoFiles(
   return files;
 }
 
-export type FolderItemState = "pending" | "writing" | "done" | "failed" | "skipped";
+export type FolderItemState = "writing" | "done" | "failed" | "skipped";
 
 export interface FolderItem {
   videoId: string;
@@ -274,7 +274,7 @@ export async function downloadToFolder(
       files = planVideoFiles(await getVideo(api, id, signal), kind, template);
     } catch (cause) {
       if (normalizeError(cause).problem === ABORTED_PROBLEM) break;
-      const item: FolderItem = { videoId: id, name: id, state: "pending", bytes: 0, size: null };
+      const item: FolderItem = { videoId: id, name: id, state: "failed", bytes: 0, size: null };
       items.push(item);
       fail(item, cause);
       continue;

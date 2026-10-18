@@ -127,28 +127,26 @@ function queryKey(query: Record<string, string>): string {
 function apply(next: VideoListState): void {
   state.value = next;
   const query = stateToQuery(next);
-  if (router !== null && route !== null && queryKey(query) !== currentRouteKey()) {
-    void router.replace({ query });
+  if (router !== null && route !== null) {
+    const current = stateToQuery(stateFromQuery(route.query));
+    if (queryKey(query) !== queryKey(current)) void router.replace({ query });
   }
   void load();
 }
 
-function currentRouteKey(): string {
-  return route === null ? "" : queryKey(stateToQuery(stateFromQuery(route.query)));
-}
-
 // Back and forward (or a pasted link) change the query under the page.
-watch(
-  () => route?.query,
-  (query) => {
-    if (query === undefined) return;
-    const next = stateFromQuery(query);
-    if (queryKey(stateToQuery(next)) === queryKey(stateToQuery(state.value))) return;
-    state.value = next;
-    clearSelection();
-    void load();
-  },
-);
+if (route !== null) {
+  watch(
+    () => route.query,
+    (query) => {
+      const next = stateFromQuery(query);
+      if (queryKey(stateToQuery(next)) === queryKey(stateToQuery(state.value))) return;
+      state.value = next;
+      clearSelection();
+      void load();
+    },
+  );
+}
 
 function onFilters(filters: VideoFilters): void {
   clearSelection();

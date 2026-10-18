@@ -118,8 +118,6 @@ const locationLabels = computed(
   () => new Map(lookups.locations.value.map((row) => [row.id, row.label])),
 );
 
-const status = computed(() => (detail.value === null ? null : videoStatus(detail.value)));
-
 function currentOf(kind: MediaRow["kind"]): MediaRow | undefined {
   return detail.value?.media.find((row) => row.is_current && row.kind === kind);
 }
@@ -141,9 +139,8 @@ const priorityHint = computed<{ text: string; ruleId: number | null }>(() => {
   return { text: "from the defaults", ruleId: null };
 });
 
-const formats = computed(() => {
-  const summary = detail.value?.formats;
-  if (summary === undefined) return "-";
+/** What YouTube offers, in one line: best picture, codecs, HDR. */
+function formatsLine(summary: VideoDetail["formats"]): string {
   const parts: string[] = [];
   if (summary.max_height !== null) {
     parts.push(
@@ -160,7 +157,7 @@ const formats = computed(() => {
   if (codecs.length > 0) parts.push(codecs.join(", "));
   if (summary.is_hdr === true) parts.push("HDR");
   return parts.length === 0 ? "-" : parts.join("; ");
-});
+}
 
 function mediaSummary(row: MediaRow): string {
   const bits = [
@@ -274,7 +271,11 @@ async function confirmTrash(): Promise<void> {
         </span>
         <span data-test="video-uploaded">Uploaded {{ formatDay(detail.upload_date) }}</span>
         <span data-test="video-duration">{{ formatDuration(detail.duration_s) }}</span>
-        <Tag v-if="status" :value="status.label" :severity="status.severity" data-test="status" />
+        <Tag
+          :value="videoStatus(detail).label"
+          :severity="videoStatus(detail).severity"
+          data-test="status"
+        />
         <span data-test="video-priority">
           Priority <strong>{{ priorityLabel(detail.reclaim_priority) }}</strong>
           <span class="cellar-muted">
@@ -372,7 +373,7 @@ async function confirmTrash(): Promise<void> {
           <dt>Type</dt>
           <dd>{{ detail.type === null ? "-" : (TYPE_LABELS[detail.type] ?? detail.type) }}</dd>
           <dt>Formats on YouTube</dt>
-          <dd data-test="formats">{{ formats }}</dd>
+          <dd data-test="formats">{{ formatsLine(detail.formats) }}</dd>
           <dt>Captions on YouTube</dt>
           <dd>
             {{ detail.caption_available === null ? "-" : detail.caption_available ? "yes" : "no" }}

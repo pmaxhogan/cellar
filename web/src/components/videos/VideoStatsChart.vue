@@ -20,7 +20,6 @@ let controller: AbortController | null = null;
 const data = computed(() => statsChartData(points.value));
 
 function themeColor(name: string, fallback: string): string {
-  if (typeof getComputedStyle !== "function") return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value === "" ? fallback : value;
 }

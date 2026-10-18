@@ -124,8 +124,8 @@ async function create(): Promise<void> {
 }
 
 async function confirmRevoke(): Promise<void> {
-  const target = revoking.value;
-  if (target === null) return;
+  // Only reachable from the dialog, which is open only while a link is chosen.
+  const target = revoking.value as ShareLinkView;
   revokeBusy.value = true;
   try {
     upsert(await revokeShareLink(api, target.token));
