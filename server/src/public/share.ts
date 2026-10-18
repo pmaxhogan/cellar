@@ -9,8 +9,11 @@ import type { Config } from "../config.ts";
  * The public share surface, mounted at /s (one of the two prefixes Cloudflare
  * Access bypasses; see security/publicPaths.ts). It owns:
  *
- *   GET /s/assets/*  the built bundle's assets (web/dist/assets), so the share
- *                    page can load without an Access session
+ *   GET /s/assets/*  the share bundle's own files from web/dist/assets (every
+ *                    one is named share-*), so the share page can load without
+ *                    an Access session. Admin chunks in the same directory
+ *                    stay private: they 404 here and load only via /assets
+ *                    behind Access.
  *   GET /s, /s/*     the share page. Share links arrive in a later wave; until
  *                    then every token is unknown, so every one gets the same
  *                    404 with web/dist/share.html as the body.
@@ -36,6 +39,15 @@ export const FALLBACK_SHARE_HTML =
   '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
   '<meta name="robots" content="noindex, nofollow"><title>Cellar</title></head>' +
   "<body><p>This link does not exist or has expired.</p></body></html>";
+
+/**
+ * True for a share bundle file directly inside web/dist/assets. The web build
+ * names every file of the share entry share-* and no admin chunk that way.
+ * @fastify/static hands over the path below /s/assets, already normalized.
+ */
+export function isShareAsset(pathname: string): boolean {
+  return /^\/share-[^/\\]+$/.test(pathname);
+}
 
 export interface SharePluginOptions {
   config: Pick<Config, "webDistDir">;
@@ -90,6 +102,8 @@ export const sharePlugin: FastifyPluginAsync<SharePluginOptions> = async (app, o
       index: false,
       list: false,
       dotfiles: "deny",
+      // Anything else in the directory falls through to the uniform 404.
+      allowedPath: (pathname) => isShareAsset(pathname),
       // Vite fingerprints every asset, so they are safe to cache hard.
       maxAge: "1y",
       immutable: true,

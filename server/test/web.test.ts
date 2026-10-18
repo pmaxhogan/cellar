@@ -29,6 +29,7 @@ async function build(withFrontend: boolean): Promise<TempApp> {
     mkdirSync(join(webDir, "assets"), { recursive: true });
     writeFileSync(join(webDir, "index.html"), INDEX_HTML);
     writeFileSync(join(webDir, "assets", "app-abc123.js"), "export const cellar = 1;\n");
+    writeFileSync(join(webDir, "favicon.svg"), "<svg>cellar</svg>");
   }
   temp = await createTempApp({ WEB_DIST_DIR: webDir });
   return temp;
@@ -49,6 +50,14 @@ describe("with a built frontend on disk", () => {
     const response = await app.inject({ method: "GET", url: "/assets/app-abc123.js" });
     expect(response.statusCode).toBe(200);
     expect(response.headers["cache-control"]).toContain("max-age=31536000");
+  });
+
+  it("serves the favicon as a file rather than through the history fallback", async () => {
+    const { app } = await build(true);
+    const response = await app.inject({ method: "GET", url: "/favicon.svg" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("image/svg+xml");
+    expect(response.body).toBe("<svg>cellar</svg>");
   });
 
   it("answers client side routes with index.html so deep links work", async () => {

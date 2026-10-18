@@ -4,7 +4,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { clientKey, FALLBACK_SHARE_HTML, SHARE_RATE_LIMIT } from "../src/public/share.ts";
+import {
+  clientKey,
+  FALLBACK_SHARE_HTML,
+  isShareAsset,
+  SHARE_RATE_LIMIT,
+} from "../src/public/share.ts";
 import { createTempApp, type TempApp } from "./helpers.ts";
 
 /**
@@ -33,6 +38,10 @@ async function withBundle(): Promise<TempApp> {
   writeFileSync(join(webDir, "share.html"), SHARE_HTML);
   writeFileSync(join(webDir, "index.html"), "<!doctype html><title>Cellar</title>");
   writeFileSync(join(webDir, "assets", "share-abc123.js"), "export const s = 1;\n");
+  writeFileSync(join(webDir, "assets", "share-favicon-abc123.svg"), "<svg></svg>");
+  writeFileSync(join(webDir, "assets", "index-abc123.js"), "export const admin = 1;\n");
+  mkdirSync(join(webDir, "assets", "share-dir"), { recursive: true });
+  writeFileSync(join(webDir, "assets", "share-dir", "x.js"), "nested");
   writeFileSync(join(webDir, "assets", ".hidden"), "nope");
   temp = await createTempApp({ WEB_DIST_DIR: webDir });
   return temp;
@@ -71,6 +80,23 @@ describe("/s with the built bundle", () => {
     expect(response.body).toContain("export const s = 1;");
     expect(response.headers["x-robots-tag"]).toBe("noindex, nofollow");
     expect(response.headers["cache-control"]).toContain("max-age=31536000");
+  });
+
+  it("serves only share-* files, so admin chunks stay behind Access", async () => {
+    const app = (await withBundle()).app;
+    const svg = await app.inject({ method: "GET", url: "/s/assets/share-favicon-abc123.svg" });
+    expect(svg.statusCode).toBe(200);
+    for (const url of [
+      "/s/assets/index-abc123.js",
+      "/s/assets/share-dir/x.js",
+      "/s/assets/share-abc123.js/../index-abc123.js",
+    ]) {
+      expectUnknownTokenPage(await app.inject({ method: "GET", url }), SHARE_HTML);
+    }
+    // The admin chunk is still served on its own path, which Access guards.
+    expect((await app.inject({ method: "GET", url: "/assets/index-abc123.js" })).statusCode).toBe(
+      200,
+    );
   });
 
   it("never lists a directory, serves no dotfile, and 404s a missing asset uniformly", async () => {
@@ -116,6 +142,9 @@ describe("/s with the built bundle", () => {
       "/s/assets/../share.html",
       "/s/assets/%2e%2e/index.html",
       "/s/assets/..%2f..%2findex.html",
+      "/s/assets/index-abc123.js",
+      "/s/assets/share-abc123.js/../index-abc123.js",
+      "/s/assets/share-abc123.js/%2e%2e/index-abc123.js",
       "/s//api/status",
     ]) {
       expect(await get(path), path).toEqual({
@@ -179,6 +208,19 @@ describe("rate limiting", () => {
 
   it("ships a per-minute default", () => {
     expect(SHARE_RATE_LIMIT).toEqual({ max: 120, timeWindow: 60_000 });
+  });
+});
+
+describe("isShareAsset", () => {
+  it("accepts a flat share-* file and nothing else", () => {
+    expect(isShareAsset("/share-abc.js")).toBe(true);
+    expect(isShareAsset("/share-favicon-abc.svg")).toBe(true);
+    expect(isShareAsset("/index-abc.js")).toBe(false);
+    expect(isShareAsset("/share-")).toBe(false);
+    expect(isShareAsset("share-abc.js")).toBe(false);
+    expect(isShareAsset("/share-dir/x.js")).toBe(false);
+    expect(isShareAsset("/x/share-abc.js")).toBe(false);
+    expect(isShareAsset("/share-a\\b.js")).toBe(false);
   });
 });
 
