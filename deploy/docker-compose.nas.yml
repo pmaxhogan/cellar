@@ -1,0 +1,85 @@
+# Cellar on TrueNAS SCALE as a Custom App (Apps -> Discover -> Custom App ->
+# "Install via YAML"), or via `sudo midclt call app.create` with this file as
+# custom_compose_config. See deploy/README.md for the full runbook.
+#
+# Hardening (locked in .claude/cellar-spec.md 1.2 / 3.12):
+#   - runs as uid:gid 3100:3100, a user that does not exist on the NAS OS; the
+#     datasets /mnt/tank/apps/cellar/{data,media} are chown 3100:3100 chmod 750
+#   - cap_drop ALL, no capabilities added back, no-new-privileges
+#   - read-only root filesystem with tmpfs /tmp (verified to coexist with the
+#     nvidia runtime on this NAS: `docker run --read-only --gpus all ... nvidia-smi`)
+#   - no published ports; the Cloudflare tunnel reaches the service by DNS
+#     alias http://cellar.ix-cellar.svc.cluster.local:8080
+#   - the GPU is reserved exactly like the mkvid app (NVENC HEVC/H.264 + NVDEC)
+services:
+  cellar:
+    container_name: cellar
+    image: ghcr.io/pmaxhogan/cellar:latest
+    pull_policy: always
+    restart: unless-stopped
+    user: "3100:3100"
+    env_file:
+      - /mnt/tank/apps/cellar/.env
+    volumes:
+      - /mnt/tank/apps/cellar/data:/data
+      - /mnt/tank/apps/cellar/media:/media
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,uid=3100,gid=3100,mode=1770
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu, video]
+              count: all
+              driver: nvidia
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: "20m"
+    depends_on:
+      - bgutil
+
+  # PO-token provider for yt-dlp (spec 3.5). Internal network only.
+  bgutil:
+    container_name: cellar-bgutil
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    pull_policy: always
+    restart: unless-stopped
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: "20m"
+
+  watchtower:
+    container_name: cellar-watchtower
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "120"
+      WATCHTOWER_ROLLING_RESTART: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: "20m"
