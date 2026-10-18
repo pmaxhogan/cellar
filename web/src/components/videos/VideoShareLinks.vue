@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import Button from "primevue/button";
 import Tag from "primevue/tag";
 import type { VideoShareLink } from "@cellar/shared";
-import { normalizeError } from "../../api/client.ts";
+import { ABORTED_PROBLEM, normalizeError } from "../../api/client.ts";
 import { useApi } from "../../api/provide.ts";
 import {
   createShareLink,
+  listShareLinks,
   revokeShareLink,
   shareView,
   type ShareLinkView,
+  type ShareStatus,
 } from "../../api/videos.ts";
 import { formatAbsolute, formatNumber, formatRelative } from "../../lib/format.ts";
 import { useToaster } from "../../lib/toast.ts";
@@ -17,9 +19,11 @@ import ConfirmDialog from "../ConfirmDialog.vue";
 
 /**
  * The public share links of one video: list, create (optionally expiring) and
- * revoke. The list comes with the video detail; creating and revoking go to
- * the shares API. Where that API is not there yet (404 or 501), creating is
- * switched off with a note instead of failing on every click.
+ * revoke. The list is read from the shares API (`GET /api/shares?video_id=`),
+ * which also reports last access times; until that answers, the rows that
+ * come with the video detail stand in. Where the shares API is not there at
+ * all (404 or 501), creating is switched off with a note instead of failing
+ * on every click.
  */
 const props = defineProps<{ videoId: string; links: VideoShareLink[] }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -28,19 +32,48 @@ const api = useApi();
 const toast = useToaster();
 
 const local = ref<ShareLinkView[]>([]);
+const fromApi = ref(false);
 const expiry = ref("");
 const creating = ref(false);
 const unavailable = ref(false);
 const revoking = ref<ShareLinkView | null>(null);
 const revokeBusy = ref(false);
+let controller: AbortController | null = null;
 
 watch(
   () => props.links,
   (links) => {
-    local.value = links.map((row) => shareView(row));
+    if (!fromApi.value) local.value = links.map((row) => shareView(row));
   },
   { immediate: true },
 );
+
+function isUnavailable(cause: unknown): boolean {
+  const status = normalizeError(cause).status;
+  return status === 404 || status === 501;
+}
+
+async function refresh(): Promise<void> {
+  controller?.abort();
+  const mine = new AbortController();
+  controller = mine;
+  try {
+    local.value = await listShareLinks(api, props.videoId, mine.signal);
+    fromApi.value = true;
+    unavailable.value = false;
+  } catch (cause) {
+    if (normalizeError(cause).problem === ABORTED_PROBLEM) return;
+    // The detail rows stay on screen; only a missing API turns creating off.
+    fromApi.value = false;
+    local.value = props.links.map((row) => shareView(row));
+    if (isUnavailable(cause)) unavailable.value = true;
+  } finally {
+    if (controller === mine) controller = null;
+  }
+}
+
+watch(() => props.videoId, refresh, { immediate: true });
+onBeforeUnmount(() => controller?.abort());
 
 const now = ref(Date.now());
 const sorted = computed(() => [...local.value].sort((a, b) => b.created_at - a.created_at));
@@ -58,20 +91,15 @@ const expiryProblem = computed(() => {
   return null;
 });
 
-function linkState(link: ShareLinkView): {
-  label: string;
-  severity: "success" | "warn" | "danger";
-} {
-  if (link.revoked_at !== null) return { label: "revoked", severity: "danger" };
-  if (link.expires_at !== null && link.expires_at <= now.value) {
-    return { label: "expired", severity: "warn" };
-  }
-  return { label: "active", severity: "success" };
-}
+const SEVERITY: Record<ShareStatus, "success" | "warn" | "danger"> = {
+  active: "success",
+  expired: "warn",
+  revoked: "danger",
+};
 
-function isUnavailable(cause: unknown): boolean {
-  const status = normalizeError(cause).status;
-  return status === 404 || status === 501;
+function upsert(link: ShareLinkView): void {
+  const rest = local.value.filter((row) => row.token !== link.token);
+  local.value = [link, ...rest];
 }
 
 async function create(): Promise<void> {
@@ -79,7 +107,7 @@ async function create(): Promise<void> {
   creating.value = true;
   try {
     const link = await createShareLink(api, props.videoId, expiresAt.value);
-    local.value = [link, ...local.value.filter((row) => row.token !== link.token)];
+    upsert(link);
     now.value = Date.now();
     expiry.value = "";
     toast.success("Share link created", link.url);
@@ -100,10 +128,7 @@ async function confirmRevoke(): Promise<void> {
   if (target === null) return;
   revokeBusy.value = true;
   try {
-    await revokeShareLink(api, target.token);
-    local.value = local.value.map((row) =>
-      row.token === target.token ? { ...row, revoked_at: Date.now() } : row,
-    );
+    upsert(await revokeShareLink(api, target.token));
     revoking.value = null;
     toast.success("Share link revoked", "It now answers the same 404 as an unknown link.");
     emit("changed");
@@ -178,11 +203,7 @@ async function copy(link: ShareLinkView): Promise<void> {
             }}</a>
           </td>
           <td>
-            <Tag
-              :value="linkState(link).label"
-              :severity="linkState(link).severity"
-              data-test="share-state"
-            />
+            <Tag :value="link.status" :severity="SEVERITY[link.status]" data-test="share-state" />
           </td>
           <td :title="link.expires_at === null ? undefined : formatAbsolute(link.expires_at)">
             {{ link.expires_at === null ? "never" : formatRelative(link.expires_at, now) }}

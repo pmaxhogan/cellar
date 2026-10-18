@@ -14,6 +14,7 @@ import {
   VideoJobResponseSchema,
   VideosListResponseSchema,
   VideoStatsResponseSchema,
+  pagedSchema,
   type BulkDownloadEstimate,
   type BulkKind,
   type SourceKind,
@@ -21,6 +22,7 @@ import {
   type VideoHistoryResponse,
   type VideoJobResponse,
   type VideoRow,
+  type VideoShareLink,
   type VideosListResponse,
   type VideoSort,
   type VideoStatsResponse,
@@ -396,22 +398,29 @@ export function sharePageUrl(token: string, origin = globalThis.location?.origin
 // --- Share links ------------------------------------------------------------
 
 /**
- * POST /api/shares answers a ShareLinkRow. The shares API lands separately from
- * this page, so the schema is read leniently here: only the token is required
- * and everything else falls back to what the detail endpoint already says.
+ * The shares API row (POST /api/shares, revoke, GET /api/shares). Defined here
+ * until the shared schema lands; it mirrors that contract exactly.
  */
+export const SHARE_STATUSES = ["active", "expired", "revoked"] as const;
 export const ShareLinkRowSchema = z.object({
   token: z.string().min(1),
-  video_id: z.string().optional(),
-  expires_at: z.number().int().nullable().optional(),
-  revoked_at: z.number().int().nullable().optional(),
-  access_count: z.number().int().nonnegative().optional(),
-  last_access_at: z.number().int().nullable().optional(),
-  created_at: z.number().int().optional(),
-  url: z.string().optional(),
+  video_id: z.string(),
+  title: z.string().nullable(),
+  channel_title: z.string().nullable(),
+  expires_at: z.number().int().nullable(),
+  revoked_at: z.number().int().nullable(),
+  access_count: z.number().int().nonnegative(),
+  last_access_at: z.number().int().nullable(),
+  created_at: z.number().int(),
+  /** Absolute public URL of the share page. */
+  url: z.string(),
+  status: z.enum(SHARE_STATUSES),
 });
-export type ShareLinkRowInput = z.infer<typeof ShareLinkRowSchema>;
+export type ShareLinkRow = z.infer<typeof ShareLinkRowSchema>;
+export const ShareLinksListResponseSchema = pagedSchema(ShareLinkRowSchema);
+export type ShareStatus = (typeof SHARE_STATUSES)[number];
 
+/** What the page shows for a link, from a shares API row or a video detail row. */
 export interface ShareLinkView {
   token: string;
   expires_at: number | null;
@@ -420,18 +429,44 @@ export interface ShareLinkView {
   last_access_at: number | null;
   created_at: number;
   url: string;
+  status: ShareStatus;
 }
 
-export function shareView(row: ShareLinkRowInput, now = Date.now()): ShareLinkView {
+/** Derive the status the shares API would report for a detail row. */
+export function shareStatus(
+  row: Pick<ShareLinkView, "expires_at" | "revoked_at">,
+  now = Date.now(),
+): ShareStatus {
+  if (row.revoked_at !== null) return "revoked";
+  if (row.expires_at !== null && row.expires_at <= now) return "expired";
+  return "active";
+}
+
+export function shareView(row: VideoShareLink | ShareLinkRow, now = Date.now()): ShareLinkView {
+  const full = "url" in row ? row : null;
   return {
     token: row.token,
-    expires_at: row.expires_at ?? null,
-    revoked_at: row.revoked_at ?? null,
-    access_count: row.access_count ?? 0,
-    last_access_at: row.last_access_at ?? null,
-    created_at: row.created_at ?? now,
-    url: row.url ?? sharePageUrl(row.token),
+    expires_at: row.expires_at,
+    revoked_at: row.revoked_at,
+    access_count: row.access_count,
+    last_access_at: full?.last_access_at ?? null,
+    created_at: row.created_at,
+    url: full?.url ?? sharePageUrl(row.token),
+    status: full?.status ?? shareStatus(row, now),
   };
+}
+
+/** Share links of one video (newest first), at most 100: one video rarely has more. */
+export async function listShareLinks(
+  api: ApiClient,
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<ShareLinkView[]> {
+  const result = await api.request(
+    `/api/shares${buildQuery({ video_id: videoId, page: 1, perPage: 100 })}`,
+    { schema: ShareLinksListResponseSchema, signal },
+  );
+  return result.rows.map((row) => shareView(row));
 }
 
 export async function createShareLink(
@@ -447,7 +482,11 @@ export async function createShareLink(
   return shareView(row);
 }
 
-/** Revoke one link. The body (a row, or nothing) is not needed: the caller reloads. */
-export async function revokeShareLink(api: ApiClient, token: string): Promise<void> {
-  await api.request(`/api/shares/${encodeURIComponent(token)}/revoke`, { method: "POST" });
+/** Revoke one link (idempotent); answers the revoked row. */
+export async function revokeShareLink(api: ApiClient, token: string): Promise<ShareLinkView> {
+  const row = await api.request(`/api/shares/${encodeURIComponent(token)}/revoke`, {
+    method: "POST",
+    schema: ShareLinkRowSchema,
+  });
+  return shareView(row);
 }
