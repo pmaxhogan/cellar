@@ -5,6 +5,9 @@
  * Every timestamp column is epoch milliseconds (INTEGER). Rows seeded from SQL
  * use unixepoch('subsec') * 1000, the closest SQLite gets to Date.now().
  */
+import { jobsAndNotifications } from "./migrations002.ts";
+import { catalog } from "./migrations003.ts";
+
 export interface Migration {
   readonly name: string;
   readonly sql: string;
@@ -84,4 +87,8 @@ CREATE TABLE account_secrets (
 );
 `;
 
-export const migrations: readonly Migration[] = [{ name: "001_init", sql: init }];
+export const migrations: readonly Migration[] = [
+  { name: "001_init", sql: init },
+  { name: "002_jobs_notifications", sql: jobsAndNotifications },
+  { name: "003_catalog", sql: catalog },
+];

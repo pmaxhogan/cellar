@@ -102,7 +102,7 @@ describe("migrate", () => {
   it("applies every migration once and is idempotent", () => {
     const first = migrate(db, log);
     expect(first.applied).toEqual(migrations.map((m) => m.name));
-    expect(first.applied).toEqual(["001_init"]);
+    expect(first.applied).toEqual(["001_init", "002_jobs_notifications", "003_catalog"]);
 
     const second = migrate(db, log);
     expect(second.applied).toEqual([]);
@@ -120,9 +120,29 @@ describe("migrate", () => {
       )
       .map((row) => row.name)
       .sort();
-    expect(tables).toEqual(
-      ["account_secrets", "accounts", "kv", "locations", "migrations", "settings"].sort(),
-    );
+    for (const name of [
+      "account_secrets",
+      "accounts",
+      "kv",
+      "locations",
+      "migrations",
+      "settings",
+    ]) {
+      expect(tables).toContain(name);
+    }
+    // 002 and 003 (orchestrator-owned): queue, inbox and the catalog with FTS.
+    for (const name of [
+      "jobs",
+      "activity",
+      "notifications",
+      "proxies",
+      "checks",
+      "videos",
+      "rules",
+    ]) {
+      expect(tables).toContain(name);
+    }
+    expect(tables).toContain("videos_fts");
   });
 
   it("rolls a failing migration back rather than half-applying it", () => {

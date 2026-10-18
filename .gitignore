@@ -28,3 +28,9 @@ e2e/test-results/
 e2e/playwright-report/
 smoke-data/
 .worktrees/
+
+# personal data exports must never enter the public repo
+*.tgz
+*.tar.gz
+takeout-*
+Takeout/
