@@ -2,7 +2,6 @@ import {
   nextEvalAt,
   PRIVACY_VALUES,
   resolveEffective,
-  SOURCE_KINDS,
   VIDEO_TYPES,
   type EffectiveSettings,
   type EvalContext,
@@ -250,19 +249,15 @@ export function loadVideoFacts(
        FROM video_sources WHERE video_id IN (${marks}) ORDER BY id`,
     ...params,
   )) {
-    const source = oneOf<SourceKind>(SOURCE_KINDS, row.source);
-    const facts = out.get(row.video_id);
-    if (facts === undefined || source === null) {
-      continue;
-    }
+    // The column's CHECK constraint and the FK to videos guarantee both lookups.
     const fact: VideoSourceFact = {
       account_id: row.account_id,
-      source,
+      source: row.source as SourceKind,
       first_seen_at: row.first_seen_at,
       last_seen_at: row.last_seen_at,
       source_ts: row.source_ts,
     };
-    facts.sources.push(fact);
+    out.get(row.video_id)?.sources.push(fact);
   }
   // The current video track wins over the current audio track; then the newest version.
   for (const row of db.all<MediaDbRow>(

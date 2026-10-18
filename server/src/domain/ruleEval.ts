@@ -617,7 +617,9 @@ export async function trashVideos(deps: RulesDeps, ids: readonly string[]): Prom
 export function previewCondition(
   deps: Pick<RulesDeps, "db" | "now">,
   condition: unknown,
+  options: { maxVideos?: number } = {},
 ): RulePreview {
+  const maxVideos = options.maxVideos ?? PREVIEW_MAX_VIDEOS;
   const ast = validateAst(condition);
   if (!ast.ok) {
     throw invalid("The rule condition is not valid.", { condition: ast.errors });
@@ -630,7 +632,7 @@ export function previewCondition(
   for (const batch of allVideoBatches(deps.db, EVAL_BATCH_SIZE)) {
     const facts = loadVideoFacts(deps.db, batch, now);
     for (const id of batch) {
-      if (total >= PREVIEW_MAX_VIDEOS) {
+      if (total >= maxVideos) {
         return { count, total, sample };
       }
       const video = facts.get(id);
