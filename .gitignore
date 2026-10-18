@@ -7,6 +7,7 @@ coverage/
 *.local
 *.local.md
 *.local.yml
+!docker-compose.local.yml
 *.local.yaml
 tmp/
 tmp-data/

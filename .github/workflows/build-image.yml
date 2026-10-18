@@ -1,0 +1,134 @@
+name: Build image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shared/**"
+      - "server/**"
+      - "web/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/build-image.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build, smoke test, and push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-
+
+      # Build to the local daemon first so the smoke test runs the exact image
+      # that would be pushed.
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: cellar:smoke
+          build-args: |
+            CELLAR_VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the built image
+        run: |
+          set -euo pipefail
+          # The NAS runs the container as 3100:3100 with host-owned volumes, so
+          # the smoke test does the same.
+          mkdir -p smoke-data/data smoke-data/media
+          sudo chown -R 3100:3100 smoke-data
+          docker run -d --name cellar-smoke \
+            --user 3100:3100 \
+            -e INSECURE_ALLOW_PUBLIC_ACCESS=1 \
+            -v "$PWD/smoke-data/data:/data" \
+            -v "$PWD/smoke-data/media:/media" \
+            cellar:smoke
+          # Insecure mode binds 127.0.0.1 inside the container, so every probe
+          # runs with docker exec rather than against a published port.
+          for attempt in $(seq 1 30); do
+            if docker exec cellar-smoke curl -fsS http://127.0.0.1:8080/healthz; then
+              echo
+              echo "healthz ok after ${attempt} attempt(s)"
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "healthz never came up"
+              docker logs cellar-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          docker exec cellar-smoke yt-dlp --version
+          docker exec cellar-smoke ffmpeg -version
+          docker exec cellar-smoke ffprobe -version
+          # The bgutil plugin must be found in the baked plugin directory. yt-dlp
+          # prints its debug header only once it handles a URL, so it is handed
+          # a closed local port: no network, and the ERROR that follows is
+          # expected.
+          plugins=$(docker exec cellar-smoke yt-dlp --ignore-config -v --simulate \
+            --plugin-dirs /opt/cellar/yt-dlp-plugins http://127.0.0.1:9/ 2>&1 || true)
+          echo "$plugins" | grep 'Plugin directories:'
+          echo "$plugins" | grep -q 'Plugin directories: .*bgutil-ytdlp-pot-provider'
+          # No -f: the 404 is the expected answer for an unknown share token.
+          share=$(docker exec cellar-smoke curl -s -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:8080/s/nope)
+          echo "/s/nope -> ${share}"
+          test "$share" = "404"
+          status=$(docker exec cellar-smoke curl -s -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:8080/api/status)
+          echo "/api/status -> ${status}"
+          test "$status" = "200"
+          docker exec cellar-smoke curl -fsS http://127.0.0.1:8080/api/status
+          echo
+          docker logs cellar-smoke
+
+      - name: Tear down the smoke container
+        if: always()
+        run: docker rm -f cellar-smoke || true
+
+      - name: Push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CELLAR_VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
