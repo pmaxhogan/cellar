@@ -503,6 +503,27 @@ describe("bulk download", () => {
     expect(entries[0]?.data.toString()).toBe("0123456789");
   });
 
+  it("keeps a form parser registered further up instead of failing to boot", async () => {
+    const app = Fastify();
+    app.decorate("cellar", temp.app.cellar);
+    app.addContentTypeParser(
+      "application/x-www-form-urlencoded",
+      { parseAs: "string" },
+      (_request, body, done) => {
+        done(null, Object.fromEntries(new URLSearchParams(String(body))));
+      },
+    );
+    await app.register(videoRoutes, { prefix: "/api" });
+    bare = app;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/videos/bulk-download/estimate",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: `ids=${A}`,
+    });
+    expect(BulkDownloadEstimateSchema.parse(res.json()).files).toBe(1);
+  });
+
   it("is 404 when nothing selected has a file", async () => {
     const res = await temp.app.inject({
       method: "POST",

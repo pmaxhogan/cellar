@@ -159,13 +159,17 @@ export const videoRoutes: FastifyPluginAsync<VideoRoutesDeps> = async (app, opti
 
   // A plain HTML form post is the one way a browser can stream a large ZIP
   // straight to disk, so bulk download accepts form bodies as well as JSON.
-  app.addContentTypeParser(
-    "application/x-www-form-urlencoded",
-    { parseAs: "string", bodyLimit: 1024 * 1024 },
-    (_request, body, done) => {
-      done(null, parseForm(String(body)));
-    },
-  );
+  // A root level parser (e.g. @fastify/formbody) is inherited and kept.
+  const FORM = "application/x-www-form-urlencoded";
+  if (!app.hasContentTypeParser(FORM)) {
+    app.addContentTypeParser(
+      FORM,
+      { parseAs: "string", bodyLimit: 1024 * 1024 },
+      (_request, body, done) => {
+        done(null, parseForm(String(body)));
+      },
+    );
+  }
 
   const requireVideo = (id: string): void => {
     if (!videoExists(db, id)) {
