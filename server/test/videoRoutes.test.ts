@@ -204,6 +204,8 @@ describe("file routes", () => {
       "x-content-type-options": "nosniff",
     });
     expect(full.headers["content-disposition"]).toBeUndefined();
+    const inline = await temp.app.inject({ method: "GET", url: `${url}?download=0` });
+    expect(inline.headers["content-disposition"]).toBeUndefined();
 
     const part = await temp.app.inject({ method: "GET", url, headers: { range: "bytes=3-5" } });
     expect(part.statusCode).toBe(206);
@@ -470,7 +472,7 @@ describe("bulk download", () => {
       method: "POST",
       url: "/api/videos/bulk-download",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      payload: `ids=${A}&ids=${B}&kind=video`,
+      payload: `ids=${A}&ids=${B}&ids=${A}&kind=video`,
     });
     expect(res.statusCode).toBe(200);
     expect(readZip(res.rawPayload).map((e) => e.name)).toEqual([`${CAFE} [${A}].webm`]);

@@ -242,7 +242,7 @@ function endRecords(plan: ZipPlan): Buffer {
 
 async function* zipChunks(plan: ZipPlan, modified: Date): AsyncGenerator<Buffer> {
   const dos = dosDateTime(modified);
-  const crcs: number[] = [];
+  const written: [PlannedEntry, number][] = [];
   for (const entry of plan.entries) {
     yield localHeader(entry, dos);
     let crc = 0;
@@ -263,11 +263,11 @@ async function* zipChunks(plan: ZipPlan, modified: Date): AsyncGenerator<Buffer>
     if (length !== entry.entry.size) {
       throw new Error(`zip entry ${entry.entry.name} changed size while streaming`);
     }
-    crcs.push(crc);
+    written.push([entry, crc]);
     yield descriptor(entry, crc);
   }
-  for (const [index, entry] of plan.entries.entries()) {
-    yield centralHeader(entry, crcs[index] ?? 0, dos);
+  for (const [entry, crc] of written) {
+    yield centralHeader(entry, crc, dos);
   }
   yield endRecords(plan);
 }

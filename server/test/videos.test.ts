@@ -171,6 +171,40 @@ describe("buildFtsQuery", () => {
     expect(buildFtsQuery("rock and roll")).toBe('"rock" "and" "roll"*');
   });
 
+  it("never produces a query FTS5 rejects", () => {
+    seedVideo(db, { id: vid("f"), title: "fuzz target" });
+    const alphabet = [
+      '"',
+      "*",
+      "^",
+      "(",
+      ")",
+      ":",
+      "+",
+      "-",
+      "{",
+      "}",
+      "a",
+      "OR",
+      " ",
+      "NEAR",
+      "1",
+    ];
+    let seed = 7;
+    const next = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed;
+    };
+    for (let round = 0; round < 300; round++) {
+      let input = "";
+      const length = 1 + (next() % 8);
+      for (let i = 0; i < length; i++) {
+        input += alphabet[next() % alphabet.length] ?? "";
+      }
+      expect(() => listVideos(db, VideosListQuerySchema.parse({ q: input })), input).not.toThrow();
+    }
+  });
+
   it("keeps unicode terms", () => {
     expect(buildFtsQuery(TOKYO)).toBe(`"${TOKYO}"*`);
   });
@@ -312,6 +346,11 @@ describe("listVideos", () => {
       thumbnail_url: `/api/videos/${vid("a")}/thumbnail/maxresdefault?sha=m2`,
     });
     expect(a?.sources.map((s) => s.source)).toEqual(["liked", "history"]);
+    seedSource(db, vid("e"), "watch_later", null, T0);
+    seedSource(db, vid("e"), "liked", null, T0);
+    const e = list({ q: "apple" }).rows[0];
+    // Same instant: ordered by source name.
+    expect(e?.sources.map((s) => s.source)).toEqual(["liked", "watch_later"]);
     // An unknown variant is still better than nothing.
     expect(b?.thumbnail_url).toBe(`/api/videos/${vid("b")}/thumbnail/custom?sha=z1`);
     expect(b?.location_id).toBe(2);
@@ -455,6 +494,29 @@ describe("getVideo", () => {
     expect(detail.overrides).toBeNull();
     expect(detail.tags).toEqual([]);
     expect(detail.thumbnail_url).toBeNull();
+
+    db.run(
+      `INSERT INTO video_effective (video_id, effective_json, provenance_json, matched_rule_ids,
+         evaluated_at, reclaim_priority, include) VALUES (?, '[1]', 'oops', '{}', ?, 5, 1)`,
+      vid("z"),
+      T0,
+    );
+    db.run(
+      `INSERT INTO rules (kind, video_id, name, effects_json, created_at, updated_at)
+       VALUES ('video', ?, 'override', 'null', ?, ?)`,
+      vid("z"),
+      T0,
+      T0,
+    );
+    const odd = getVideo(db, vid("z"));
+    expect(odd.effective).toEqual({
+      values: {},
+      provenance: {},
+      matched_rule_ids: [],
+      evaluated_at: T0,
+      next_eval_at: null,
+    });
+    expect(odd.overrides).toEqual({});
   });
 
   it("is not_found for an unknown id", () => {
@@ -629,6 +691,9 @@ describe("diffVideo / applyVideoDiff", () => {
     ]);
     expect(diffVideo(stored, { title: null })).toEqual([
       { field: "title", old: "T", new: null, history: true },
+    ]);
+    expect(diffVideo(stored, { has_av1: false })).toEqual([
+      { field: "has_av1", old: 1, new: 0, history: false },
     ]);
     expect(diffVideo(stored, { has_av1: 0 })).toEqual([
       { field: "has_av1", old: 1, new: 0, history: false },

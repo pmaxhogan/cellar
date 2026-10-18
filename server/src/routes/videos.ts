@@ -163,7 +163,7 @@ export const videoRoutes: FastifyPluginAsync<VideoRoutesDeps> = async (app, opti
     "application/x-www-form-urlencoded",
     { parseAs: "string", bodyLimit: 1024 * 1024 },
     (_request, body, done) => {
-      done(null, parseForm(typeof body === "string" ? body : body.toString("utf8")));
+      done(null, parseForm(String(body)));
     },
   );
 

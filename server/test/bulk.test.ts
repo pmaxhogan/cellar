@@ -211,6 +211,23 @@ describe("planBulkFiles", () => {
       rel_path: "UC/one/en.vtt",
       lang: "e n",
     });
+    // Same language once sanitised as the row above, and a row without a language.
+    seedMedia(db, {
+      video_id: vid("three"),
+      kind: "captions",
+      rel_path: "UC/one/en.vtt",
+      lang: "en",
+    });
+    seedMedia(db, { video_id: vid("three"), kind: "captions", rel_path: "UC/one/en.vtt" });
+    // A directory where a file should be is skipped; a file without an extension is kept.
+    seedMedia(db, { video_id: vid("three"), kind: "video", rel_path: "UC/one", location_id: loc });
+    writeFileSync(join(media, "UC", "one", "raw"), "RAW");
+    seedMedia(db, {
+      video_id: vid("three"),
+      kind: "audio",
+      rel_path: "UC/one/raw",
+      location_id: loc,
+    });
   });
 
   afterEach(() => {
@@ -249,7 +266,14 @@ describe("planBulkFiles", () => {
     expect(names({ ids: [vid("one"), vid("three")], kind: "captions" })).toEqual([
       [`Same title [${vid("one")}].en.vtt`, 6],
       // No title: the template leaves "[id]"; the language is reduced to safe characters.
+      [`[${vid("three")}].und.vtt`, 6],
       [`[${vid("three")}].en.vtt`, 6],
+    ]);
+    expect(names({ ids: [vid("three")], kind: "all" }).map(([name]) => name)).toEqual([
+      `[${vid("three")}]`,
+      `[${vid("three")}].und.vtt`,
+      `[${vid("three")}].en.vtt`,
+      `[${vid("three")}].metadata.json`,
     ]);
   });
 

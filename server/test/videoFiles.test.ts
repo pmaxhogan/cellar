@@ -18,6 +18,7 @@ import {
   resolveMediaPath,
   resolveUnder,
   thumbnailPath,
+  type RangeResult,
 } from "../src/domain/videoFiles.ts";
 import { createTempDb, type TempDb } from "./helpers.ts";
 import { seedLocation, seedMedia, seedThumbnail, seedVideo, T0, vid } from "./videoSeed.ts";
@@ -172,6 +173,13 @@ describe("parseRange", () => {
   });
 });
 
+async function bodyOf(result: RangeResult): Promise<string> {
+  if (result.stream === null) {
+    throw new Error("no stream");
+  }
+  return text(result.stream);
+}
+
 describe("openRangeStream", () => {
   let file: string;
 
@@ -188,7 +196,7 @@ describe("openRangeStream", () => {
       "accept-ranges": "bytes",
       "content-length": "10",
     });
-    expect(await text(result.stream ?? [])).toBe("0123456789");
+    expect(await bodyOf(result)).toBe("0123456789");
   });
 
   it("serves a partial range", async () => {
@@ -198,7 +206,7 @@ describe("openRangeStream", () => {
       "content-length": "4",
       "content-range": "bytes 2-5/10",
     });
-    expect(await text(result.stream ?? [])).toBe("2345");
+    expect(await bodyOf(result)).toBe("2345");
   });
 
   it("answers 416 and HEAD without a stream", () => {

@@ -10,6 +10,7 @@ import {
   type VideoSourceRef,
   type VideoStatsPoint,
   type VideoStatsQuery,
+  type VideoStatus,
   type VideosListQuery,
 } from "@cellar/shared";
 import type { SQLInputValue } from "node:sqlite";
@@ -69,7 +70,6 @@ const FIRST_SEEN_SQL = `COALESCE(
 const SOURCES_SQL = `(SELECT json_group_array(json_object(
     'account_id', s.account_id, 'source', s.source, 'first_seen_at', s.first_seen_at))
   FROM video_sources s WHERE s.video_id = v.id)`;
-const HAS_THUMB_SQL = "EXISTS (SELECT 1 FROM thumbnails t WHERE t.video_id = v.id)";
 
 const ROW_SELECT = `
   v.id, v.channel_id, c.title AS channel_title, v.title, v.upload_date, v.published_at,
@@ -79,8 +79,7 @@ const ROW_SELECT = `
   ${DOWNLOADED_SQL} AS downloaded,
   ${SIZE_SQL} AS media_size_bytes,
   ${LOCATION_SQL} AS location_id,
-  ve.reclaim_priority, ve.include,
-  ${HAS_THUMB_SQL} AS has_thumb`;
+  ve.reclaim_priority, ve.include`;
 
 const BASE_FROM = `videos v
   LEFT JOIN channels c ON c.id = v.channel_id
@@ -102,7 +101,7 @@ const SORT_SQL: Record<VideoSort, string> = {
   last_recheck: "v.last_recheck_at",
 };
 
-const STATUS_SQL: Record<string, string> = {
+const STATUS_SQL: Record<VideoStatus, string> = {
   public: "(v.privacy = 'public' AND v.gone_since IS NULL)",
   unlisted: "(v.privacy = 'unlisted' AND v.gone_since IS NULL)",
   gone: "(v.privacy IN ('private', 'removed', 'unavailable') OR v.gone_since IS NOT NULL)",
@@ -110,7 +109,7 @@ const STATUS_SQL: Record<string, string> = {
   removed: "(v.privacy = 'removed')",
 };
 
-const PRI_SQL: Record<string, string> = {
+const PRI_SQL: Record<NonNullable<VideosListQuery["pri"]>, string> = {
   "-1": "ve.reclaim_priority = -1",
   "0": "ve.reclaim_priority = 0",
   positive: "ve.reclaim_priority > 0",
@@ -136,13 +135,13 @@ interface VideoDbRow {
   has_av1: number | null;
   created_at: number;
   updated_at: number;
-  sources_json: string | null;
+  /** json_group_array output: always a JSON array. */
+  sources_json: string;
   downloaded: number;
   media_size_bytes: number;
   location_id: number | null;
   reclaim_priority: number | null;
   include: number | null;
-  has_thumb: number;
 }
 
 function placeholders(count: number): string {
@@ -153,19 +152,18 @@ function bool(value: number | null): boolean | null {
   return value === null ? null : value !== 0;
 }
 
-function parseSources(json: string | null): VideoSourceRef[] {
-  const parsed = parseJsonColumn(json);
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-  return (parsed as VideoSourceRef[]).sort(
+function parseSources(json: string): VideoSourceRef[] {
+  return (JSON.parse(json) as VideoSourceRef[]).sort(
     (a, b) => a.first_seen_at - b.first_seen_at || a.source.localeCompare(b.source),
   );
 }
 
-export function thumbnailUrl(videoId: string, variant: string, sha256?: string): string {
-  const base = `/api/videos/${encodeURIComponent(videoId)}/thumbnail/${encodeURIComponent(variant)}`;
-  return sha256 === undefined ? base : `${base}?sha=${encodeURIComponent(sha256)}`;
+/** The content addressed URL of one stored thumbnail (safe to cache forever). */
+export function thumbnailUrl(videoId: string, variant: string, sha256: string): string {
+  return (
+    `/api/videos/${encodeURIComponent(videoId)}/thumbnail/${encodeURIComponent(variant)}` +
+    `?sha=${encodeURIComponent(sha256)}`
+  );
 }
 
 /** Best stored thumbnail per video, as content addressed URLs. */
@@ -220,7 +218,7 @@ function toVideoRow(row: VideoDbRow, thumbs: Map<string, string>): VideoRow {
     location_id: row.location_id,
     reclaim_priority: row.reclaim_priority,
     include: bool(row.include),
-    thumbnail_url: row.has_thumb !== 0 ? (thumbs.get(row.id) ?? null) : null,
+    thumbnail_url: thumbs.get(row.id) ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -246,7 +244,7 @@ function buildWhere(query: VideosListQuery, fts: string | null): Where {
   }
   where.maybe("v.channel_id = ?", query.channel_id);
   if (query.status !== undefined) {
-    where.add(`(${query.status.map((status) => STATUS_SQL[status] ?? "0").join(" OR ")})`);
+    where.add(`(${query.status.map((status) => STATUS_SQL[status]).join(" OR ")})`);
   }
   if (query.downloaded !== undefined) {
     where.add(query.downloaded ? DOWNLOADED_SQL : `NOT ${DOWNLOADED_SQL}`);
@@ -260,13 +258,9 @@ function buildWhere(query: VideosListQuery, fts: string | null): Where {
   where.maybe("v.duration_s >= ?", query.min_duration);
   where.maybe("v.duration_s <= ?", query.max_duration);
   if (query.pri !== undefined) {
-    where.add(PRI_SQL[query.pri] ?? "0");
+    where.add(PRI_SQL[query.pri]);
   }
   return where;
-}
-
-function isFtsSyntaxError(error: unknown): boolean {
-  return error instanceof Error && /fts5|MATCH/i.test(error.message);
 }
 
 /** The Videos page datatable. */
@@ -278,26 +272,19 @@ export function listVideos(db: Db, query: VideosListQuery): Paged<VideoRow> {
     fts !== null && query.sort === undefined
       ? `${BM25} ASC, v.id ASC`
       : `${SORT_SQL[query.sort ?? "upload_date"]} ${dir} NULLS LAST, v.id ASC`;
-  let page: Paged<VideoDbRow>;
-  try {
-    page = pagedQuery<VideoDbRow, VideoDbRow>(db, {
-      select: ROW_SELECT,
-      from: fts === null ? BASE_FROM : FTS_FROM,
-      where,
-      orderBy,
-      page: query.page,
-      perPage: query.perPage,
-      map: (row) => row,
-    });
-  } catch (error) {
-    if (fts !== null && isFtsSyntaxError(error)) {
-      throw invalid("The search query could not be parsed.");
-    }
-    throw error;
-  }
+  // buildFtsQuery only ever emits quoted terms, so MATCH cannot see a syntax error.
+  const page = pagedQuery<VideoDbRow, VideoDbRow>(db, {
+    select: ROW_SELECT,
+    from: fts === null ? BASE_FROM : FTS_FROM,
+    where,
+    orderBy,
+    page: query.page,
+    perPage: query.perPage,
+    map: (row) => row,
+  });
   const thumbs = bestThumbnails(
     db,
-    page.rows.filter((row) => row.has_thumb !== 0).map((row) => row.id),
+    page.rows.map((row) => row.id),
   );
   return { ...page, rows: page.rows.map((row) => toVideoRow(row, thumbs)) };
 }
@@ -441,9 +428,11 @@ export function getVideo(db: Db, id: string): VideoDetail {
     overrides:
       overrides === undefined ? null : (asRecord(parseJsonColumn(overrides.effects_json)) ?? {}),
     media,
-    captions: media
-      .filter((m) => m.kind === "captions" && m.is_current && m.lang !== null)
-      .map((m) => ({ lang: m.lang ?? "", media_id: m.id })),
+    captions: media.flatMap((m) =>
+      m.kind === "captions" && m.is_current && m.lang !== null
+        ? [{ lang: m.lang, media_id: m.id }]
+        : [],
+    ),
     thumbnails: thumbnailRows.map((t) => ({
       variant: t.variant,
       sha256: t.sha256,
