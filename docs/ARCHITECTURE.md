@@ -1906,8 +1906,7 @@ JSON.
 at priority 20 with payload `{ video_ids: [id], manual: true }`, deduped, and answer 202
 `{ job_id, deduped }` (`deduped` is true when an equivalent queued or running job already
 existed); 404 for an unknown video, 501 `not_implemented` when no handler is registered
-for the job type. (Today the recheck route queues the job type `recheck`, while the
-registered recheck handler is `recheck_batch`, so it answers 501.) `POST /videos/trash`
+for the job type (the recheck route queues a `recheck_batch`). `POST /videos/trash`
 takes `{ ids }` (1 to 10,000 valid ids, deduped; JSON or a form), applies the rules
 domain's `trashVideos` (a `video` rule named "Trashed" with `reclaim_priority` 0 per id,
 keeping any other overrides, then an immediate evaluation and an immediate pri-0 sweep of

@@ -57,7 +57,7 @@ import { parseBody, parseParams, parseQuery } from "./validate.ts";
 
 /** Job types this module enqueues. Their handlers live with the media and recheck code. */
 export const DOWNLOAD_JOB = "download";
-export const RECHECK_JOB = "recheck";
+export const RECHECK_JOB = "recheck_batch";
 
 /** What the routes need from modules that are wired in at boot. */
 export interface VideoRoutesDeps {

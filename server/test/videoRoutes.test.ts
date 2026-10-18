@@ -345,7 +345,7 @@ describe("job triggers", () => {
   it("enqueues typed, deduped jobs when a handler exists", async () => {
     const registry = new JobRegistry();
     registry.register("download", { class: "download", handler: noop });
-    registry.register("recheck", { class: "io", handler: noop });
+    registry.register("recheck_batch", { class: "io", handler: noop });
     const app = await withDeps({ registry });
     const first = await app.inject({ method: "POST", url: `/api/videos/${A}/download-now` });
     expect(first.statusCode).toBe(202);
@@ -368,7 +368,7 @@ describe("job triggers", () => {
         payload_json: JSON.stringify({ video_ids: [A], manual: true }),
       },
       {
-        type: "recheck",
+        type: "recheck_batch",
         video_id: A,
         priority: 20,
         payload_json: JSON.stringify({ video_ids: [A], manual: true }),
