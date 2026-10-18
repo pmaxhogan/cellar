@@ -22,6 +22,7 @@ import {
   videoRoutes,
   type VideoRoutesDeps,
 } from "../src/routes/videos.ts";
+import { invalidateSettingsCache } from "../src/domain/settings.ts";
 import { createTempApp, type TempApp } from "./helpers.ts";
 import {
   seedChannel,
@@ -377,14 +378,19 @@ describe("job triggers", () => {
 });
 
 describe("POST /api/videos/trash", () => {
-  it("answers 501 until the rules domain is wired in", async () => {
+  it("is wired to the rules domain in the real app and answers 202 with the count", async () => {
     const res = await temp.app.inject({
       method: "POST",
       url: "/api/videos/trash",
       payload: { ids: [A] },
     });
-    expect(res.statusCode).toBe(501);
-    expect(res.json()).toMatchObject({ code: "not_implemented" });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ count: 1 });
+    const rule = temp.db.get<{ effects_json: string }>(
+      "SELECT effects_json FROM rules WHERE kind = 'video' AND video_id = ?",
+      A,
+    );
+    expect(JSON.parse(rule?.effects_json ?? "{}")).toMatchObject({ reclaim_priority: 0 });
   });
 
   it("delegates the deduped ids and answers 202 with the count", async () => {
@@ -429,6 +435,8 @@ describe("bulk download", () => {
     temp.db.run(
       "INSERT INTO settings (key, value_json, updated_at) VALUES ('bulk.warn_gb', '0', 0)",
     );
+    // The real app reads settings through the cached registry resolver.
+    invalidateSettingsCache(temp.db);
     const warned = await temp.app.inject({ method: "POST", url, payload: { ids: [A] } });
     expect(BulkDownloadEstimateSchema.parse(warned.json())).toEqual({
       files: 1,
