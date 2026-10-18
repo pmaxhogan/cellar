@@ -17,6 +17,8 @@
 services:
   cellar:
     container_name: cellar
+    # The scheduler needs up to 20 s to requeue running jobs on SIGTERM.
+    stop_grace_period: 45s
     image: ghcr.io/pmaxhogan/cellar:latest
     pull_policy: always
     restart: unless-stopped

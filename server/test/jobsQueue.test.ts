@@ -9,6 +9,7 @@ import {
   DEFAULT_MAX_ATTEMPTS,
   JobQueue,
   MAX_ERROR_LENGTH,
+  MAX_RESTARTS,
   toJobRow,
 } from "../src/jobs/queue.ts";
 import { jobRegistry, JobRegistry, registerHandler } from "../src/jobs/types.ts";
@@ -322,20 +323,34 @@ describe("complete, fail and requeue", () => {
     expect(queue.get(id)).toMatchObject({ status: "queued", attempts: 0, runAfter: clock });
   });
 
-  it("requeues running jobs on boot and fails those on their final attempt", () => {
+  it("requeues running jobs on boot without charging an attempt, until MAX_RESTARTS", () => {
     const resumable = queue.enqueue({ type: "recheck" }).id;
     const final = queue.enqueue({ type: "recheck", maxAttempts: 1 }).id;
     const untouched = queue.enqueue({ type: "recheck", runAfter: clock + 999 }).id;
     queue.claimNext(["io"]);
     queue.claimNext(["io"]);
     clock += 5;
-    expect(queue.requeueRunning()).toEqual({ requeued: 1, failed: 1 });
-    expect(queue.get(resumable)).toMatchObject({ status: "queued", runAfter: clock, attempts: 1 });
+    // A restart is not the job's fault: both go back with their attempt refunded.
+    expect(queue.requeueRunning()).toEqual({ requeued: 2, failed: 0 });
+    expect(queue.get(resumable)).toMatchObject({ status: "queued", runAfter: clock, attempts: 0 });
+    expect(queue.get(final)).toMatchObject({ status: "queued", attempts: 0 });
+    expect(queue.get(untouched)?.runAfter).toBe(clock + 994);
+    // The third restart of the same job fails it so a crashing job cannot loop.
+    for (let restart = 2; restart <= MAX_RESTARTS; restart += 1) {
+      queue.claimNext(["io"]);
+      queue.claimNext(["io"]);
+      clock += 5;
+      const result = queue.requeueRunning();
+      if (restart < MAX_RESTARTS) {
+        expect(result).toEqual({ requeued: 2, failed: 0 });
+      } else {
+        expect(result).toEqual({ requeued: 0, failed: 2 });
+      }
+    }
     expect(queue.get(final)).toMatchObject({
       status: "failed",
-      error: "interrupted by a restart on its final attempt",
+      error: `interrupted by a restart ${String(MAX_RESTARTS)} times`,
     });
-    expect(queue.get(untouched)?.runAfter).toBe(clock + 994);
   });
 });
 

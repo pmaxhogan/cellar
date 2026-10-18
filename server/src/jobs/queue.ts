@@ -143,6 +143,9 @@ function placeholders(count: number): string {
   return new Array<string>(count).fill("?").join(", ");
 }
 
+/** Restarts (deploys, crashes) a job may survive before it is failed. */
+export const MAX_RESTARTS = 3;
+
 export class JobQueue {
   readonly db: Db;
   readonly registry: JobRegistry;
@@ -326,20 +329,28 @@ export class JobQueue {
   }
 
   /**
-   * Boot recovery. Anything still `running` was interrupted by a crash and
-   * goes back to the queue; a job that was already on its final attempt is
-   * failed instead, so a job that crashes the process cannot crash-loop it.
+   * Boot recovery. Anything still `running` was interrupted by a restart
+   * (deploy, crash) and goes back to the queue. A restart is not the job's
+   * fault, so the attempt the claim consumed is given back; a restart counter
+   * in the payload (`_restarts`) still fails a job that was interrupted
+   * MAX_RESTARTS times, so a job that crashes the process cannot crash-loop it.
    */
   requeueRunning(now: number = this.#now()): { requeued: number; failed: number } {
     return this.db.tx(() => {
       const failed = this.db.run(
         `UPDATE jobs SET status = 'failed', finished_at = ?,
-                error = 'interrupted by a restart on its final attempt'
-          WHERE status = 'running' AND attempts >= max_attempts`,
+                error = 'interrupted by a restart ' || ? || ' times'
+          WHERE status = 'running'
+            AND COALESCE(json_extract(payload_json, '$._restarts'), 0) >= ?`,
         now,
+        String(MAX_RESTARTS),
+        MAX_RESTARTS - 1,
       ).changes;
       const requeued = this.db.run(
-        `UPDATE jobs SET status = 'queued', run_after = ?, started_at = NULL
+        `UPDATE jobs SET status = 'queued', run_after = ?, started_at = NULL,
+                attempts = MAX(attempts - 1, 0),
+                payload_json = json_set(payload_json, '$._restarts',
+                  COALESCE(json_extract(payload_json, '$._restarts'), 0) + 1)
           WHERE status = 'running'`,
         now,
       ).changes;
