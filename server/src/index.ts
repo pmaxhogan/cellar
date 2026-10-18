@@ -7,6 +7,10 @@ import { createSystemDeps, startSystemSchedules } from "./domain/systemDeps.ts";
 import { migrate } from "./db/migrate.ts";
 import { EventBus } from "./events.ts";
 import { bootScheduler } from "./jobs/boot.ts"; // wave1B
+import { createRulesDeps } from "./domain/ruleEval.ts"; // wave2B
+import { ensureDefaultRules } from "./domain/rules.ts"; // wave2B
+import { registerRuleHandlers, registerRuleSchedules } from "./jobs/handlers/evalPass.ts"; // wave2B
+import { jobRegistry } from "./jobs/types.ts"; // wave2B
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -40,8 +44,28 @@ async function main(): Promise<void> {
 
   // --- wave1B scheduler boot ---
   // Starts now; app.close() (the SIGTERM/SIGINT shutdown below) awaits its graceful stop.
-  bootScheduler(app, { config, db, log, events, getSettings: () => getSettings(db, config) });
+  const scheduler = bootScheduler(app, {
+    config,
+    db,
+    log,
+    events,
+    getSettings: () => getSettings(db, config),
+  });
   // --- end wave1B scheduler boot ---
+
+  // --- wave2B boot ---
+  ensureDefaultRules(db, log.child({ mod: "rules" }));
+  const rulesDeps = createRulesDeps({
+    db,
+    log: log.child({ mod: "rules" }),
+    events,
+    dataDir: config.dataDir,
+    registry: jobRegistry,
+    enqueue: (input) => scheduler.enqueue(input),
+  });
+  registerRuleHandlers(jobRegistry, rulesDeps);
+  registerRuleSchedules(scheduler, rulesDeps);
+  // --- end wave2B boot ---
 
   const reminder = config.insecureMode
     ? setInterval(() => {
