@@ -111,7 +111,7 @@ async function main(): Promise<void> {
   log.info({ port: config.port, host: config.host }, "cellar listening");
 
   // After listen so /healthz answers while the probes run; never fatal.
-  void refreshToolVersions(db, config.binDir, toolsLog).catch((error: unknown) => {
+  void refreshToolVersions(db, config, toolsLog).catch((error: unknown) => {
     toolsLog.warn({ err: error }, "could not record tool versions");
   });
 

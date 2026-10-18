@@ -446,7 +446,11 @@ describe("kv.tool_versions", () => {
   });
 
   it("records the baseline versions", async () => {
-    const versions = await recordBaselineVersions(temp.db, "/opt/cellar/bin", log, async (file) =>
+    const baseline = join(dir, "baseline");
+    mkdirSync(baseline);
+    writeFileSync(join(baseline, "yt-dlp"), "x");
+    writeFileSync(join(baseline, "ffmpeg"), "x");
+    const versions = await recordBaselineVersions(temp.db, baseline, log, async (file) =>
       file.endsWith("yt-dlp") ? "2026.08.19\n" : "ffmpeg version 7.1\n",
     );
     expect(versions).toEqual({ ytdlp: "2026.08.19", ffmpeg: "7.1" });

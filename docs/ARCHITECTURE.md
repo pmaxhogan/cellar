@@ -1216,7 +1216,10 @@ Official binaries live in `/data/bin`:
   `CELLAR_TOOL_YT_DLP` / `CELLAR_TOOL_FFMPEG` / `CELLAR_TOOL_FFPROBE` override (a JSON
   argv array, a test seam), then `$DATA_DIR/bin/<tool>` when it exists at call time,
   then the bare name from `PATH`. The image's `PATH` starts with `/data/bin`, then
-  `/opt/cellar/bin`.
+  `/opt/cellar/bin`. The boot version probes resolve the same way, so `/api/status` and
+  `/api/tools` report the build that actually answers (yt-dlp's probe gets 60 s: the
+  onefile build unpacks itself first); `baseline` is always the image's copy, null when
+  the image has none.
 - A daily check (the first run 5 minutes after boot; `POST /api/tools/update` triggers
   it on demand with `{ tool?, force? }`) looks for newer releases: yt-dlp from GitHub
   releases (sha256 verified), ffmpeg/ffprobe from the BtbN builds (one archive carries

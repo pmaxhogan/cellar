@@ -16,7 +16,7 @@ import {
 } from "@cellar/shared";
 import type { Logger } from "pino";
 import { z } from "zod";
-import type { Config } from "../config.ts";
+import { toolCommand, type Config, type ToolCommand } from "../config.ts";
 import type { Db } from "../db/db.ts";
 import { getKv, setKv } from "../db/kv.ts";
 import { DomainError } from "../domain/errors.ts";
@@ -45,6 +45,11 @@ export type ToolName = (typeof TOOL_BINARIES)[number];
 export const TOOL_VERSIONS_KEY = "tool_versions";
 /** Each version probe gets this long before it is killed. */
 export const PROBE_TIMEOUT_MS = 10_000;
+/**
+ * yt-dlp's onefile build unpacks about 90 MB into $TMPDIR before it answers
+ * --version, which on a cold or slow disk takes far longer than 10 s.
+ */
+export const YTDLP_PROBE_TIMEOUT_MS = 60_000;
 
 export const YTDLP_RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
 export const YTDLP_ASSET = "yt-dlp_linux";
@@ -75,14 +80,18 @@ export interface ProbedVersions {
 // ---------------------------------------------------------------------------
 
 /** Runs a binary with an argv array (never a shell) and resolves its stdout. */
-export type ExecRunner = (file: string, args: readonly string[]) => Promise<string>;
+export type ExecRunner = (
+  file: string,
+  args: readonly string[],
+  timeoutMs?: number,
+) => Promise<string>;
 
-export const execRunner: ExecRunner = (file, args) =>
+export const execRunner: ExecRunner = (file, args, timeoutMs = PROBE_TIMEOUT_MS) =>
   new Promise((resolve, reject) => {
     execFile(
       file,
       [...args],
-      { timeout: PROBE_TIMEOUT_MS, windowsHide: true, maxBuffer: 1024 * 1024 },
+      { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 },
       (error, stdout) => {
         if (error) {
           reject(error);
@@ -265,35 +274,64 @@ export function parseFfprobeVersion(stdout: string): string | null {
   return match?.[1] ?? null;
 }
 
+/** The two tools whose versions are recorded. */
+type VersionedTool = "yt-dlp" | "ffmpeg";
+
+/** How to start a tool for a version probe; null when there is nothing to probe. */
+export type ProbeCommandFor = (tool: VersionedTool) => ToolCommand | null;
+
+const VERSION_PROBES: Record<
+  VersionedTool,
+  { args: readonly string[]; parse: (stdout: string) => string | null; timeoutMs: number }
+> = {
+  "yt-dlp": { args: ["--version"], parse: parseYtdlpVersion, timeoutMs: YTDLP_PROBE_TIMEOUT_MS },
+  ffmpeg: { args: ["-version"], parse: parseFfmpegVersion, timeoutMs: PROBE_TIMEOUT_MS },
+};
+
 async function probe(
   run: ExecRunner,
-  file: string,
-  args: readonly string[],
-  parse: (stdout: string) => string | null,
+  tool: VersionedTool,
+  cmd: ToolCommand | null,
   log: Logger,
 ): Promise<string | null> {
+  if (cmd === null) {
+    return null;
+  }
+  const { args, parse, timeoutMs } = VERSION_PROBES[tool];
   try {
-    return parse(await run(file, args));
+    return parse(await run(cmd.command, [...cmd.prefixArgs, ...args], timeoutMs));
   } catch (error) {
     // Only the error's name and code: the message of a failed spawn can embed
     // the full command line, and later waves pass more than --version.
     const { name, code } = error as { name?: unknown; code?: unknown };
-    log.warn({ file, errName: name, errCode: code }, "tool version probe failed");
+    log.warn({ file: cmd.command, errName: name, errCode: code }, "tool version probe failed");
     return null;
   }
 }
 
-/** Run each tool's version command from binDir. */
-export async function probeToolVersions(
-  binDir: string,
+async function probeEach(
+  commandFor: ProbeCommandFor,
+  log: Logger,
+  run: ExecRunner,
+): Promise<ProbedVersions> {
+  const [ytdlp, ffmpeg] = await Promise.all([
+    probe(run, "yt-dlp", commandFor("yt-dlp"), log),
+    probe(run, "ffmpeg", commandFor("ffmpeg"), log),
+  ]);
+  return { ytdlp, ffmpeg };
+}
+
+/**
+ * Run each tool's version command the way the server runs the tool
+ * (toolCommand: the CELLAR_TOOL_<TOOL> override, else $DATA_DIR/bin, else
+ * PATH), so the recorded version is the one that actually answers.
+ */
+export function probeToolVersions(
+  config: Pick<Config, "toolOverrides" | "binDir">,
   log: Logger,
   run: ExecRunner = execRunner,
 ): Promise<ProbedVersions> {
-  const [ytdlp, ffmpeg] = await Promise.all([
-    probe(run, join(binDir, "yt-dlp"), ["--version"], parseYtdlpVersion, log),
-    probe(run, join(binDir, "ffmpeg"), ["-version"], parseFfmpegVersion, log),
-  ]);
-  return { ytdlp, ffmpeg };
+  return probeEach((tool) => toolCommand(config, tool), log, run);
 }
 
 // ---------------------------------------------------------------------------
@@ -376,11 +414,11 @@ export function updateToolState(
 /** Probe and persist the current versions, where /api/status reads them. */
 export async function refreshToolVersions(
   db: Db,
-  binDir: string,
+  config: Pick<Config, "toolOverrides" | "binDir">,
   log: Logger,
   run: ExecRunner = execRunner,
 ): Promise<ProbedVersions> {
-  const versions = await probeToolVersions(binDir, log, run);
+  const versions = await probeToolVersions(config, log, run);
   updateToolState(db, (state) => {
     state.ytdlp.current = versions.ytdlp;
     state.ffmpeg.current = versions.ffmpeg;
@@ -389,14 +427,26 @@ export async function refreshToolVersions(
   return versions;
 }
 
-/** Probe the image's baseline copies and record them as `baseline`. */
+/**
+ * Probe the image's baseline copies and record them as `baseline`. A tool
+ * the image does not carry (a dev checkout, an override-only test run) is
+ * recorded as null rather than probed elsewhere, so `baseline` always means
+ * the copy the image shipped.
+ */
 export async function recordBaselineVersions(
   db: Db,
   baselineBinDir: string,
   log: Logger,
   run: ExecRunner = execRunner,
 ): Promise<ProbedVersions> {
-  const versions = await probeToolVersions(baselineBinDir, log, run);
+  const versions = await probeEach(
+    (tool) => {
+      const image = join(baselineBinDir, tool);
+      return existsSync(image) ? { command: image, prefixArgs: [] } : null;
+    },
+    log,
+    run,
+  );
   updateToolState(db, (state) => {
     state.ytdlp.baseline = versions.ytdlp;
     state.ffmpeg.baseline = versions.ffmpeg;
