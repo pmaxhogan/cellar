@@ -11,6 +11,9 @@
 #   - no published ports; the Cloudflare tunnel reaches the service by DNS
 #     alias http://cellar.ix-cellar.svc.cluster.local:8080
 #   - the GPU is reserved exactly like the mkvid app (NVENC HEVC/H.264 + NVDEC)
+#   - watchtower mounts the Docker socket and the GHCR login: this is the owner's
+#     locked auto-deploy path (same as every sibling app on this NAS); the
+#     tradeoff is documented in SECURITY.md
 services:
   cellar:
     container_name: cellar
@@ -54,6 +57,12 @@ services:
     pull_policy: always
     restart: unless-stopped
     init: true
+    # Verified on the NAS: the image serves /ping as 3100:3100 with a read-only
+    # rootfs, cap_drop ALL and no-new-privileges.
+    user: "3100:3100"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,uid=3100,gid=3100,mode=1770
     cap_drop:
       - ALL
     security_opt:
