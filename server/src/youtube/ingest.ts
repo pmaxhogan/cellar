@@ -81,35 +81,67 @@ export function isChannelId(value: unknown): value is string {
   return typeof value === "string" && CHANNEL_ID_RE.test(value);
 }
 
+const FTS_COLUMNS = "rowid, id, title, description, channel_title, tags";
+const FTS_VALUES = `v.rowid, v.id, COALESCE(v.title, ''), COALESCE(v.description, ''), ?,
+  COALESCE(v.tags_json, '')`;
+
 /**
  * Insert the channel or refresh its metadata. A given title or thumbnail
  * replaces the stored one (channels get renamed); null keeps what is there.
- * Returns true when the row was created.
+ * A rename also reindexes the channel's videos in the contentless videos_fts
+ * table: its delete trigger must see the channel title the row was indexed
+ * with, or the index is corrupted. Returns true when the row was created.
  */
 export function ensureChannel(db: Db, input: ChannelInput, now: number): boolean {
-  const existed = db.get("SELECT 1 AS one FROM channels WHERE id = ?", input.id) !== undefined;
-  db.run(
-    `INSERT INTO channels (id, title, uploads_playlist_id, thumbnail_url, first_seen_at,
-                           created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (id) DO UPDATE SET
-       title = COALESCE(excluded.title, channels.title),
-       uploads_playlist_id = COALESCE(channels.uploads_playlist_id, excluded.uploads_playlist_id),
-       thumbnail_url = COALESCE(excluded.thumbnail_url, channels.thumbnail_url),
-       updated_at = CASE
-         WHEN excluded.title IS NOT channels.title AND excluded.title IS NOT NULL
-           OR excluded.thumbnail_url IS NOT channels.thumbnail_url
-             AND excluded.thumbnail_url IS NOT NULL
-         THEN excluded.updated_at ELSE channels.updated_at END`,
-    input.id,
-    input.title ?? null,
-    input.uploadsPlaylistId ?? null,
-    input.thumbnailUrl ?? null,
-    now,
-    now,
-    now,
-  );
-  return !existed;
+  return db.tx(() => {
+    const existing = db.get<{ title: string | null }>(
+      "SELECT title FROM channels WHERE id = ?",
+      input.id,
+    );
+    const renamed =
+      existing !== undefined &&
+      input.title !== undefined &&
+      input.title !== null &&
+      input.title !== existing.title;
+    if (renamed) {
+      db.run(
+        `INSERT INTO videos_fts (videos_fts, ${FTS_COLUMNS})
+         SELECT 'delete', ${FTS_VALUES} FROM videos v WHERE v.channel_id = ?`,
+        existing.title ?? "",
+        input.id,
+      );
+    }
+    db.run(
+      `INSERT INTO channels (id, title, uploads_playlist_id, thumbnail_url, first_seen_at,
+                             created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         title = COALESCE(excluded.title, channels.title),
+         uploads_playlist_id = COALESCE(channels.uploads_playlist_id, excluded.uploads_playlist_id),
+         thumbnail_url = COALESCE(excluded.thumbnail_url, channels.thumbnail_url),
+         updated_at = CASE
+           WHEN excluded.title IS NOT channels.title AND excluded.title IS NOT NULL
+             OR excluded.thumbnail_url IS NOT channels.thumbnail_url
+               AND excluded.thumbnail_url IS NOT NULL
+           THEN excluded.updated_at ELSE channels.updated_at END`,
+      input.id,
+      input.title ?? null,
+      input.uploadsPlaylistId ?? null,
+      input.thumbnailUrl ?? null,
+      now,
+      now,
+      now,
+    );
+    if (renamed) {
+      db.run(
+        `INSERT INTO videos_fts (${FTS_COLUMNS})
+         SELECT ${FTS_VALUES} FROM videos v WHERE v.channel_id = ?`,
+        input.title ?? "",
+        input.id,
+      );
+    }
+    return existing === undefined;
+  });
 }
 
 export interface SourceInput {
@@ -445,9 +477,10 @@ interface QueuedRecheck {
 }
 
 /**
- * Queue rechecks for `ids` in batches of 50. Ids join a queued explicit batch
- * of the same type that still has room before a new job is created, so many
- * small ingests still cost one API unit per 50 videos.
+ * Queue rechecks for `ids` in batches of 50. Ids already in a queued explicit
+ * batch are skipped, the rest join a queued batch of the same type that still
+ * has room before a new job is created, so many small ingests still cost one
+ * API unit per 50 videos. (This is the dedupe; the queue's own is not used.)
  */
 export function enqueueRecheck(
   deps: Pick<IngestDeps, "db" | "enqueue">,
@@ -504,7 +537,6 @@ export function enqueueRecheck(
           type,
           payload: { video_ids: chunk },
           priority: options.priority ?? 0,
-          dedupe: true,
         }).id,
       );
     }
