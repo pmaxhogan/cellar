@@ -12,6 +12,9 @@ import { wave1AOptions, wave1ARoutes } from "./routes/wave1a.ts";
 import { toApiError } from "./routes/validate.ts";
 import { wave1bRoutes } from "./routes/wave1b.ts"; // wave1B
 import { wave2bRoutes } from "./routes/wave2b.ts"; // wave2B
+import { createRulesDeps, trashVideos } from "./domain/ruleEval.ts";
+import { JobQueue } from "./jobs/queue.ts";
+import { jobRegistry } from "./jobs/types.ts";
 import { videoRoutes } from "./routes/videos.ts"; // wave2C
 import { shareRoutes } from "./routes/shares.ts"; // wave5A
 import { takeoutRoutes } from "./routes/takeout.ts"; // wave5B
@@ -124,12 +127,29 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
   // --- wave1A routes ---
   await app.register(wave1ARoutes, { prefix: "/api", ...wave1AOptions(deps) });
   // --- end wave1A routes ---
+  // Rules deps shared by the rules/inspect routes and the videos trash route.
+  // The queue writes the same jobs table the scheduler drains; job.queued
+  // events wake it.
+  const routeQueue = new JobQueue(ctx.db, { registry: jobRegistry, events: ctx.events });
+  const rulesDeps = createRulesDeps({
+    db: ctx.db,
+    log: ctx.log.child({ mod: "rules" }),
+    events: ctx.events,
+    dataDir: ctx.config.dataDir,
+    registry: jobRegistry,
+    enqueue: (input) => routeQueue.enqueue(input),
+    getSettings: () => getSettings(ctx.db, ctx.config),
+  });
   // --- wave2B routes ---
-  await app.register(wave2bRoutes, { prefix: "/api" });
+  await app.register(wave2bRoutes, { prefix: "/api", deps: rulesDeps });
   // --- end wave2B routes ---
   // --- wave2C routes ---
-  // trashVideos (rules domain) and the download/recheck handlers are wired in at merge.
-  await app.register(videoRoutes, { prefix: "/api" });
+  await app.register(videoRoutes, {
+    prefix: "/api",
+    registry: jobRegistry,
+    getSettings: () => getSettings(ctx.db, ctx.config),
+    trashVideos: async (ids) => (await trashVideos(rulesDeps, ids)).videoIds.length,
+  });
   // --- end wave2C routes ---
   // --- wave5A routes ---
   await app.register(shareRoutes, { prefix: "/api" });
