@@ -512,6 +512,7 @@ replace the provisional ones this document first assigned.
 | `tools.auto_update` | true | Swap in verified yt-dlp / ffmpeg releases; when off, updates are only checked |
 | `tools.pot_provider_url` | `http://bgutil:4416` | PO-token sidecar (env `POT_PROVIDER_URL` seeds it); empty disables |
 | `tools.js_runtime` | `node` | yt-dlp `--js-runtimes` value (`node`, `deno`, `bun`, `quickjs`) |
+| `tools.ffmpeg_release_tag` | `autobuild-2025-12-31-14-28` | BtbN release the ffmpeg updater installs; `latest` follows the rolling build. Builds from early 2026 on need driver 610+ for NVENC (API 13.1) |
 | `selfcheck.interval_hours` | 24 | Self-check cadence |
 | `bulk.warn_gb` | 20 | UI warning threshold for bulk downloads, no cap |
 | `thumbnails.variants` | all six variants | Thumbnail variants to fetch, hash and keep on change |
@@ -1223,16 +1224,27 @@ Official binaries live in `/data/bin`:
 - A daily check (the first run 5 minutes after boot; `POST /api/tools/update` triggers
   it on demand with `{ tool?, force? }`) looks for newer releases: yt-dlp from GitHub
   releases (sha256 verified), ffmpeg/ffprobe from the BtbN builds (one archive carries
-  both). With `tools.auto_update` on, a newer build is downloaded to
+  both). The ffmpeg release is `releases/tags/<tools.ffmpeg_release_tag>`: for a dated
+  `autobuild-*` tag the single `ffmpeg-N-*-linux64-gpl.tar.xz` asset, for `latest` the
+  `ffmpeg-master-latest-linux64-gpl.tar.xz` asset, both verified against the release's
+  `checksums.sha256`. The default pins the build the image ships, because later builds
+  link NVENC API 13.1 and fail to open an encoder on drivers older than 610. With
+  `tools.auto_update` on, a newer build is downloaded to
   `/data/bin/.staging`, checksum-verified, version-probed from staging, and swapped in
   atomically: the live binary is hard linked to `<tool>.prev` and the staged file is
   renamed over the live path. With it off, the check only records what is available.
+  NVENC guard: when the live ffmpeg passes the NVENC test encode (a 10 frame `lavfi`
+  encode per `hevc_nvenc` / `h264_nvenc`), every encoder that works now must also work
+  with the staged build; otherwise nothing is swapped, `last_error` reads "staged ffmpeg
+  cannot use NVENC on this driver; kept the current build", the outcome is `blocked`, and
+  that build is not downloaded again until an update is forced.
   `POST /api/tools/rollback` with `{ tool }` swaps `.prev` back (412 when there is no
   `.prev`); after a rollback, the release rolled away from is not reinstalled until
   forced. `GET /api/tools` reports per tool `current`, `previous`, `baseline`, `latest`,
   `checked_at`, `updated_at`, `update_available`, `last_error` and `rolled_back_from`,
-  plus `js_runtime`, `pot_provider_url` and `auto_update`; the self-check and the About
-  page show them.
+  plus `js_runtime`, `pot_provider_url`, `auto_update` and `ffmpeg_release_tag`; the
+  self-check and the About page show them. `POST /api/tools/update` adds `outcomes`, one
+  per tool: `updated`, `up_to_date`, `available`, `skipped`, `blocked` or `failed`.
 - Node (already in the image) is the JS runtime for yt-dlp's challenge solving. Every
   yt-dlp run gets `--plugin-dirs <CELLAR_YTDLP_PLUGIN_DIRS>` (default
   `/opt/cellar/yt-dlp-plugins`; empty disables) and `--js-runtimes <tools.js_runtime>`
@@ -1433,7 +1445,7 @@ Details never carry credentials (proxies are named by label only). Checks:
 | GET | `/api/checks/latest` | admin | the newest self-check run, `{ row }` (null before the first run) |
 | POST | `/api/checks/run` | admin | run the self-check now; answers the new check row |
 | GET | `/api/stats/daily` | admin | pre-aggregated daily chart points |
-| GET | `/api/tools` | admin | yt-dlp / ffmpeg versions and update state, `js_runtime`, `pot_provider_url`, `auto_update` |
+| GET | `/api/tools` | admin | yt-dlp / ffmpeg versions and update state, `js_runtime`, `pot_provider_url`, `auto_update`, `ffmpeg_release_tag` |
 | POST | `/api/tools/update` | admin | `{ tool?, force? }`: check for updates now (and apply them when `tools.auto_update` is on); answers the tools response plus `outcomes` |
 | POST | `/api/tools/rollback` | admin | `{ tool }`: swap a tool back to its `.prev` build; 412 when there is none |
 | POST | `/api/takeout` | admin | multipart upload of a Takeout archive (zip / tgz) / json / csv |

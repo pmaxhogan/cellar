@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { settingsRegistry } from "@cellar/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setKv } from "../src/db/kv.ts";
 import { DomainError } from "../src/domain/errors.ts";
@@ -12,7 +13,12 @@ import {
   describeError,
   FFMPEG_ASSET,
   FFMPEG_RELEASE_API,
+  FFMPEG_SUMS_ASSET,
+  ffmpegReleaseApi,
+  NVENC_BLOCKED_ERROR,
+  nvencTestEncodeArgs,
   parseChecksum,
+  probeNvenc,
   readToolState,
   readToolVersions,
   recordBaselineVersions,
@@ -20,6 +26,7 @@ import {
   resolveToolCommand,
   rollbackTool,
   runFile,
+  selectFfmpegAsset,
   startToolUpdateSchedule,
   TOOL_VERSIONS_KEY,
   toolEnvKey,
@@ -37,8 +44,10 @@ import {
   fakeBinDir,
   githubRoutes,
   json,
+  nvencFfmpegScript,
   routedFetch,
   scriptRunFile,
+  serveRoutes,
   settingsWith,
   TAR,
   versionScript,
@@ -65,16 +74,17 @@ afterEach(() => {
 
 function makeDeps(
   github: RoutedFetch,
-  overrides: Partial<ToolUpdateDeps> & { autoUpdate?: boolean } = {},
+  overrides: Partial<ToolUpdateDeps> & { autoUpdate?: boolean; ffmpegTag?: string } = {},
 ): ToolUpdateDeps {
-  const { autoUpdate = true, ...rest } = overrides;
+  const { autoUpdate = true, ffmpegTag = "latest", ...rest } = overrides;
   return {
     db: temp.db,
     log,
     config: { binDir },
     fetch: github.fetch,
     runFile: scriptRunFile,
-    getSettings: () => settingsWith({ "tools.auto_update": autoUpdate }),
+    getSettings: () =>
+      settingsWith({ "tools.auto_update": autoUpdate, "tools.ffmpeg_release_tag": ffmpegTag }),
     now: () => 1_000,
     tarCommand: TAR,
     ...rest,
@@ -287,12 +297,10 @@ describe("checkToolUpdates: ffmpeg", () => {
     expect(skipped?.status).toBe("skipped");
 
     // A newer build is not the rolled back one, so it installs.
-    github.routes.clear();
-    for (const [url, route] of Object.entries(
+    serveRoutes(
+      github,
       githubRoutes({ ffmpegArchive: archive, ffmpegUpdatedAt: "2026-10-19T10:00:00Z" }),
-    )) {
-      github.routes.set(url, route);
-    }
+    );
     const [newer] = await checkToolUpdates(deps, { tool: "ffmpeg" });
     expect(newer?.status).toBe("updated");
     state = readToolState(temp.db);
@@ -356,6 +364,237 @@ describe("checkToolUpdates: ffmpeg", () => {
     expect(github.calls).toEqual([FFMPEG_RELEASE_API]);
     const info = toolVersionsInfo(readToolState(temp.db), "ffmpeg");
     expect(info).toMatchObject({ latest: "2026-10-18T10:00:00Z", update_available: true });
+  });
+});
+
+const PINNED_TAG = "autobuild-2025-12-31-14-28";
+const PINNED_ASSET = "ffmpeg-N-122306-geea648ef1d-linux64-gpl.tar.xz";
+const PINNED_ROOT = "ffmpeg-N-122306-geea648ef1d-linux64-gpl";
+/** Assets a real dated release lists next to the one the updater wants. */
+const DECOYS = [
+  "ffmpeg-N-122306-geea648ef1d-linux64-gpl-shared.tar.xz",
+  "ffmpeg-N-122306-geea648ef1d-linux64-lgpl.tar.xz",
+  "ffmpeg-N-122306-geea648ef1d-linuxarm64-gpl.tar.xz",
+  "ffmpeg-N-122306-geea648ef1d-win64-gpl.zip",
+  "ffmpeg-n8.0-1-g0123456789-linux64-gpl-8.0.tar.xz",
+];
+
+describe("checkToolUpdates: ffmpeg release tag", () => {
+  it("defaults to the pinned BtbN build that still encodes on older drivers", () => {
+    expect(settingsWith()["tools.ffmpeg_release_tag"]).toBe(PINNED_TAG);
+    expect(buildToolsResponse(temp.db, settingsWith(), "x").ffmpeg_release_tag).toBe(PINNED_TAG);
+  });
+
+  it("installs the dated linux64-gpl asset of a pinned tag, unpacking its own root", async () => {
+    const archive = await buildFfmpegArchive(join(dir, "build"), "N-122306-geea648ef1d", {
+      root: PINNED_ROOT,
+    });
+    const github = routedFetch(
+      githubRoutes({
+        ffmpegTag: PINNED_TAG,
+        ffmpegAssetName: PINNED_ASSET,
+        ffmpegOtherAssets: DECOYS,
+        ffmpegArchive: archive,
+        ffmpegUpdatedAt: "2025-12-31T14:40:00Z",
+      }),
+    );
+    const [outcome] = await checkToolUpdates(makeDeps(github, { ffmpegTag: PINNED_TAG }), {
+      tool: "ffmpeg",
+    });
+    expect(outcome?.status).toBe("updated");
+    expect(github.calls).toEqual([
+      `https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/${PINNED_TAG}`,
+      `${DL}/${FFMPEG_SUMS_ASSET}`,
+      `${DL}/${PINNED_ASSET}`,
+    ]);
+    expect(read("ffmpeg")).toContain("N-122306-geea648ef1d");
+    expect(read("ffprobe")).toContain("ffprobe version N-122306-geea648ef1d");
+    expect(readToolState(temp.db).ffmpeg).toMatchObject({
+      current: "N-122306-geea648ef1d",
+      latest: "2025-12-31T14:40:00Z",
+      asset_updated_at: "2025-12-31T14:40:00Z",
+    });
+  });
+
+  it("follows BtbN latest with the master asset when the tag is latest", async () => {
+    const archive = await buildFfmpegArchive(join(dir, "build"), "N-300-glatest");
+    const github = routedFetch(
+      githubRoutes({
+        ffmpegArchive: archive,
+        ffmpegUpdatedAt: "2026-10-18T10:00:00Z",
+        // A latest release also carries dated-looking names; only the master asset counts.
+        ffmpegOtherAssets: DECOYS,
+      }),
+    );
+    const [outcome] = await checkToolUpdates(makeDeps(github, { ffmpegTag: "latest" }), {
+      tool: "ffmpeg",
+    });
+    expect(outcome?.status).toBe("updated");
+    expect(github.calls[0]).toBe(FFMPEG_RELEASE_API);
+    expect(github.calls).toContain(`${DL}/${FFMPEG_ASSET}`);
+    expect(read("ffmpeg")).toContain("N-300-glatest");
+  });
+
+  it("selects exactly one asset or explains why not", () => {
+    const release = (names: string[]) => ({
+      tag_name: "t",
+      assets: names.map((name) => ({ name, browser_download_url: `${DL}/${name}` })),
+    });
+    expect(selectFfmpegAsset(release([...DECOYS, PINNED_ASSET]), PINNED_TAG).name).toBe(
+      PINNED_ASSET,
+    );
+    expect(selectFfmpegAsset(release([FFMPEG_ASSET, PINNED_ASSET]), "latest").name).toBe(
+      FFMPEG_ASSET,
+    );
+    expect(() => selectFfmpegAsset(release(DECOYS), PINNED_TAG)).toThrow(
+      /release t has no ffmpeg-N-\.\.\.-linux64-gpl\.tar\.xz asset/,
+    );
+    expect(() =>
+      selectFfmpegAsset(release([PINNED_ASSET, "ffmpeg-N-1-gabc-linux64-gpl.tar.xz"]), PINNED_TAG),
+    ).toThrow(/more than one/);
+    expect(() => selectFfmpegAsset(release([PINNED_ASSET]), "latest")).toThrow(
+      `release t has no ${FFMPEG_ASSET} asset`,
+    );
+    expect(ffmpegReleaseApi("a b")).toBe(
+      "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/a%20b",
+    );
+  });
+
+  it("only accepts tag-safe setting values", () => {
+    const schema = settingsRegistry["tools.ffmpeg_release_tag"].schema;
+    expect(schema.safeParse("latest").success).toBe(true);
+    expect(schema.safeParse(PINNED_TAG).success).toBe(true);
+    expect(schema.safeParse("../../evil").success).toBe(false);
+    expect(schema.safeParse("a?b=c").success).toBe(false);
+    expect(schema.safeParse("").success).toBe(false);
+  });
+});
+
+describe("checkToolUpdates: NVENC guard", () => {
+  /** Live ffmpeg + ffprobe whose NVENC test encode works. */
+  function installLiveFfmpeg(version: string): void {
+    writeFileSync(join(binDir, "ffmpeg"), nvencFfmpegScript(version, "works"));
+    writeFileSync(join(binDir, "ffprobe"), versionScript(`ffprobe version ${version} Copyright`));
+    updateToolState(temp.db, (state) => {
+      state.ffmpeg.current = version;
+      state.ffmpeg.asset_updated_at = "2025-12-31T14:40:00Z";
+    });
+  }
+
+  async function stagedRelease(
+    version: string,
+    nvenc: "works" | "listed-but-fails",
+    updatedAt: string,
+  ) {
+    const archive = await buildFfmpegArchive(join(dir, `build-${version}`), version, {
+      ffmpegScript: nvencFfmpegScript(version, nvenc),
+    });
+    return githubRoutes({ ffmpegArchive: archive, ffmpegUpdatedAt: updatedAt });
+  }
+
+  it("probes NVENC with a listing and a real test encode per encoder", async () => {
+    const works = join(dir, "works");
+    const fails = join(dir, "fails");
+    writeFileSync(works, nvencFfmpegScript("1", "works"));
+    writeFileSync(fails, nvencFfmpegScript("2", "listed-but-fails"));
+    writeFileSync(join(dir, "plain"), versionScript("ffmpeg version 3 Copyright"));
+    expect(await probeNvenc(scriptRunFile, works)).toEqual({ hevc_nvenc: true, h264_nvenc: true });
+    expect(await probeNvenc(scriptRunFile, fails)).toEqual({
+      hevc_nvenc: false,
+      h264_nvenc: false,
+    });
+    // No NVENC listed, or no binary at all.
+    expect(await probeNvenc(scriptRunFile, join(dir, "plain"))).toEqual({
+      hevc_nvenc: false,
+      h264_nvenc: false,
+    });
+    expect(await probeNvenc(runFile, join(dir, "missing"))).toEqual({
+      hevc_nvenc: false,
+      h264_nvenc: false,
+    });
+    expect(nvencTestEncodeArgs("hevc_nvenc")).toEqual(
+      expect.arrayContaining(["-c:v", "hevc_nvenc", "-f", "null", "-"]),
+    );
+  });
+
+  it("refuses a build that loses NVENC, keeps the live one and does not retry it", async () => {
+    installLiveFfmpeg("N-122306-gold");
+    const github = routedFetch(
+      await stagedRelease("N-200-gnewapi", "listed-but-fails", "2026-10-18T10:00:00Z"),
+    );
+    const deps = makeDeps(github);
+
+    const [outcome] = await checkToolUpdates(deps, { tool: "ffmpeg" });
+    expect(outcome).toEqual({
+      tool: "ffmpeg",
+      status: "blocked",
+      detail: `${NVENC_BLOCKED_ERROR} (build 2026-10-18T10:00:00Z); force an update to try it again.`,
+    });
+    expect(read("ffmpeg")).toContain("N-122306-gold");
+    expect(read("ffprobe")).toContain("ffprobe version N-122306-gold");
+    expect(existsSync(join(binDir, "ffmpeg.prev"))).toBe(false);
+    expect(existsSync(join(binDir, ".staging"))).toBe(false);
+    let state = readToolState(temp.db);
+    expect(state.ffmpeg).toMatchObject({
+      current: "N-122306-gold",
+      asset_updated_at: "2025-12-31T14:40:00Z",
+      latest: "2026-10-18T10:00:00Z",
+      last_error: NVENC_BLOCKED_ERROR,
+      blocked_latest: "2026-10-18T10:00:00Z",
+      checked_at: 1_000,
+    });
+    // The blocked build is not offered as an update.
+    expect(toolVersionsInfo(state, "ffmpeg")).toMatchObject({
+      update_available: false,
+      last_error: NVENC_BLOCKED_ERROR,
+    });
+
+    // The daily check does not download it again, and the error stays.
+    const downloads = () => github.calls.filter((url) => url === `${DL}/${FFMPEG_ASSET}`).length;
+    expect(downloads()).toBe(1);
+    const [again] = await checkToolUpdates(deps, { tool: "ffmpeg" });
+    expect(again?.status).toBe("blocked");
+    expect(downloads()).toBe(1);
+    expect(readToolState(temp.db).ffmpeg.last_error).toBe(NVENC_BLOCKED_ERROR);
+
+    // Forcing retries it (and the guard still holds).
+    const [forced] = await checkToolUpdates(deps, { tool: "ffmpeg", force: true });
+    expect(forced?.status).toBe("blocked");
+    expect(downloads()).toBe(2);
+
+    // A later build that keeps NVENC is swapped in and clears the block.
+    serveRoutes(github, await stagedRelease("N-201-gfixed", "works", "2026-10-19T10:00:00Z"));
+    const [fixed] = await checkToolUpdates(deps, { tool: "ffmpeg" });
+    expect(fixed?.status).toBe("updated");
+    expect(read("ffmpeg")).toContain("N-201-gfixed");
+    expect(read("ffmpeg.prev")).toContain("N-122306-gold");
+    state = readToolState(temp.db);
+    expect(state.ffmpeg).toMatchObject({
+      current: "N-201-gfixed",
+      previous: "N-122306-gold",
+      last_error: null,
+      blocked_latest: null,
+    });
+  });
+
+  it("swaps in a build when both the live and the staged one encode with NVENC", async () => {
+    installLiveFfmpeg("N-122306-gold");
+    const github = routedFetch(await stagedRelease("N-200-gok", "works", "2026-10-18T10:00:00Z"));
+    const [outcome] = await checkToolUpdates(makeDeps(github), { tool: "ffmpeg" });
+    expect(outcome?.status).toBe("updated");
+    expect(read("ffmpeg")).toContain("N-200-gok");
+    expect(readToolState(temp.db).ffmpeg.last_error).toBeNull();
+  });
+
+  it("does not hold back a build when the live ffmpeg has no working NVENC", async () => {
+    writeFileSync(join(binDir, "ffmpeg"), nvencFfmpegScript("N-1-gcpu", "listed-but-fails"));
+    writeFileSync(join(binDir, "ffprobe"), versionScript("ffprobe version N-1-gcpu Copyright"));
+    const github = routedFetch(
+      await stagedRelease("N-200-gnewapi", "listed-but-fails", "2026-10-18T10:00:00Z"),
+    );
+    const [outcome] = await checkToolUpdates(makeDeps(github), { tool: "ffmpeg" });
+    expect(outcome?.status).toBe("updated");
+    expect(read("ffmpeg")).toContain("N-200-gnewapi");
   });
 });
 

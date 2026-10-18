@@ -466,6 +466,21 @@ export const settingsRegistry = {
       options: JS_RUNTIMES.map((value) => ({ value, label: value })),
     },
   }),
+  "tools.ffmpeg_release_tag": defineSetting({
+    // Interpolated into the GitHub release URL, so only tag-safe characters.
+    schema: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._-]+$/, "Must be a release tag such as autobuild-2025-12-31-14-28"),
+    default: "autobuild-2025-12-31-14-28",
+    ui: {
+      group: "Tools",
+      label: "ffmpeg release tag",
+      description:
+        "BtbN FFmpeg-Builds release the updater installs. Builds from early 2026 on need NVIDIA driver 610 or newer for NVENC (API 13.1); the default is the newest build that still encodes on older drivers. Set it to latest to follow the newest build.",
+      control: "text",
+    },
+  }),
 
   "selfcheck.interval_hours": defineSetting({
     schema: posInt,

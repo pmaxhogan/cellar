@@ -20,6 +20,7 @@ import { getKv } from "../db/kv.ts";
 import { migrations } from "../db/migrations.ts";
 import {
   describeError,
+  nvencTestEncodeArgs,
   parseFfmpegVersion,
   parseFfprobeVersion,
   parseYtdlpVersion,
@@ -255,23 +256,8 @@ export interface NvencAvailability {
 }
 
 async function encodeWorks(deps: Pick<SelfCheckDeps, "runTool">, codec: string): Promise<boolean> {
-  const result = await tryRun(deps, "ffmpeg", [
-    "-hide_banner",
-    "-nostats",
-    "-loglevel",
-    "error",
-    "-f",
-    "lavfi",
-    "-i",
-    "testsrc=size=256x256:rate=10",
-    "-frames:v",
-    "10",
-    "-c:v",
-    codec,
-    "-f",
-    "null",
-    "-",
-  ]);
+  // The same test encode the tool updater's NVENC guard runs (probeNvenc).
+  const result = await tryRun(deps, "ffmpeg", nvencTestEncodeArgs(codec));
   return result?.code === 0;
 }
 

@@ -111,6 +111,7 @@ describe("/api/tools", () => {
       js_runtime: "node",
       pot_provider_url: "http://bgutil:4416",
       auto_update: true,
+      ffmpeg_release_tag: "autobuild-2025-12-31-14-28",
     });
     expect(body.outcomes).toBeUndefined();
   });

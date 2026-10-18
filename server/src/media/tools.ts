@@ -36,6 +36,12 @@ import { APP_VERSION } from "../version.ts";
  * over the live path, so the live path never goes missing. rollbackTool swaps
  * `.prev` back.
  *
+ * ffmpeg comes from the BtbN release named by `tools.ffmpeg_release_tag`
+ * (pinned by default: newer builds need a newer NVIDIA driver for NVENC). Before
+ * a staged ffmpeg is swapped in, the NVENC guard checks that it can still
+ * encode with NVENC whenever the live build can; if not, the swap is refused
+ * and reported as `blocked`.
+ *
  * Nothing here is fatal: a missing or broken tool is logged and reported as a
  * null version in /api/status, and the server keeps serving.
  */
@@ -54,11 +60,26 @@ export const YTDLP_PROBE_TIMEOUT_MS = 60_000;
 export const YTDLP_RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
 export const YTDLP_ASSET = "yt-dlp_linux";
 export const YTDLP_SUMS_ASSET = "SHA2-256SUMS";
-export const FFMPEG_RELEASE_API =
-  "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest";
+const FFMPEG_RELEASES_BY_TAG = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/";
+/** `tools.ffmpeg_release_tag` value that follows BtbN's rolling `latest` release. */
+export const FFMPEG_LATEST_TAG = "latest";
+/** The GitHub API URL of one BtbN release. */
+export function ffmpegReleaseApi(tag: string): string {
+  return `${FFMPEG_RELEASES_BY_TAG}${encodeURIComponent(tag)}`;
+}
+export const FFMPEG_RELEASE_API = ffmpegReleaseApi(FFMPEG_LATEST_TAG);
+/** The asset of the rolling `latest` release. */
 export const FFMPEG_ASSET = "ffmpeg-master-latest-linux64-gpl.tar.xz";
+/** The matching asset of a dated `autobuild-*` release, e.g. ffmpeg-N-122306-g...-linux64-gpl.tar.xz. */
+export const FFMPEG_PINNED_ASSET = /^ffmpeg-N-.*-linux64-gpl\.tar\.xz$/;
 export const FFMPEG_SUMS_ASSET = "checksums.sha256";
-const FFMPEG_ARCHIVE_ROOT = "ffmpeg-master-latest-linux64-gpl";
+/**
+ * Last error recorded when a staged ffmpeg verified but could not encode with
+ * NVENC while the installed one can.
+ */
+export const NVENC_BLOCKED_ERROR =
+  "staged ffmpeg cannot use NVENC on this driver; kept the current build";
+const NVENC_PROBE_TIMEOUT_MS = 30_000;
 
 /** Release metadata and checksum files are small; give them 30 s. */
 const API_TIMEOUT_MS = 30_000;
@@ -335,6 +356,67 @@ export function probeToolVersions(
 }
 
 // ---------------------------------------------------------------------------
+// NVENC probe
+// ---------------------------------------------------------------------------
+
+/** The NVENC encoders cellar uses. */
+export const NVENC_CODECS = ["hevc_nvenc", "h264_nvenc"] as const;
+export type NvencCodec = (typeof NVENC_CODECS)[number];
+
+/**
+ * A ten frame test encode to the null muxer. Listing an encoder proves
+ * nothing: a build linked against a newer NVENC API lists it and then fails
+ * to open a session on an older driver.
+ */
+export function nvencTestEncodeArgs(codec: string): string[] {
+  return [
+    "-hide_banner",
+    "-nostats",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=256x256:rate=10",
+    "-frames:v",
+    "10",
+    "-c:v",
+    codec,
+    "-f",
+    "null",
+    "-",
+  ];
+}
+
+/** Which NVENC encoders this ffmpeg lists AND can open a session with. */
+export type NvencSupport = Record<NvencCodec, boolean>;
+
+export function nvencWorks(support: NvencSupport): boolean {
+  return NVENC_CODECS.some((codec) => support[codec]);
+}
+
+/**
+ * Run the NVENC test encode with an explicit ffmpeg binary (the live one or a
+ * staged update). One encode at a time: consumer GPUs cap concurrent NVENC
+ * sessions. A binary that does not start counts as no NVENC.
+ */
+export async function probeNvenc(runFileImpl: RunFile, ffmpegPath: string): Promise<NvencSupport> {
+  const support: NvencSupport = { hevc_nvenc: false, h264_nvenc: false };
+  const run = (args: readonly string[]): Promise<RunToolResult | null> =>
+    runFileImpl(ffmpegPath, args, NVENC_PROBE_TIMEOUT_MS).catch(() => null);
+  const encoders = await run(["-hide_banner", "-encoders"]);
+  if (encoders?.code !== 0) {
+    return support;
+  }
+  for (const codec of NVENC_CODECS) {
+    if (new RegExp(`\\b${codec}\\b`).test(encoders.stdout)) {
+      support[codec] = (await run(nvencTestEncodeArgs(codec)))?.code === 0;
+    }
+  }
+  return support;
+}
+
+// ---------------------------------------------------------------------------
 // kv.tool_versions
 // ---------------------------------------------------------------------------
 
@@ -352,6 +434,11 @@ export interface ToolState {
 export interface FfmpegToolState extends ToolState {
   asset_updated_at: string | null;
   previous_asset_updated_at: string | null;
+  /**
+   * The build (its `latest` key) the NVENC guard refused. The daily check
+   * does not download it again; a forced update does.
+   */
+  blocked_latest: string | null;
 }
 
 export interface ToolVersionsState {
@@ -376,6 +463,7 @@ const ToolStateSchema = z.object({
 const FfmpegStateSchema = ToolStateSchema.extend({
   asset_updated_at: nullableString.default(null),
   previous_asset_updated_at: nullableString.default(null),
+  blocked_latest: nullableString.default(null),
 });
 
 /**
@@ -470,7 +558,8 @@ export function toolVersionsInfo(state: ToolVersionsState, tool: UpdatableTool):
   const updateAvailable =
     entry.latest !== null &&
     entry.latest !== installedKey(state, tool) &&
-    entry.latest !== entry.rolled_back_from;
+    entry.latest !== entry.rolled_back_from &&
+    !(tool === "ffmpeg" && entry.latest === state.ffmpeg.blocked_latest);
   const info: ToolVersionsInfo = {
     current: entry.current,
     previous: entry.previous,
@@ -517,6 +606,7 @@ export function buildToolsResponse(
     js_runtime: settings["tools.js_runtime"],
     pot_provider_url: resolvePotProviderUrl(settings, potProviderEnvDefault),
     auto_update: settings["tools.auto_update"],
+    ffmpeg_release_tag: settings["tools.ffmpeg_release_tag"],
     ...(outcomes === undefined ? {} : { outcomes }),
   };
 }
@@ -783,17 +873,67 @@ async function updateYtdlp(ctx: CheckContext): Promise<ToolUpdateOutcome> {
   };
 }
 
+/**
+ * The build archive of a BtbN release: the fixed `latest` asset, or for a
+ * dated `autobuild-*` tag the single `ffmpeg-N-...-linux64-gpl.tar.xz`.
+ */
+export function selectFfmpegAsset(release: Release, tag: string): ReleaseAsset {
+  if (tag === FFMPEG_LATEST_TAG) {
+    return findAsset(release, FFMPEG_ASSET);
+  }
+  const matches = release.assets.filter((asset) => FFMPEG_PINNED_ASSET.test(asset.name));
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0
+        ? `release ${release.tag_name} has no ffmpeg-N-...-linux64-gpl.tar.xz asset`
+        : `release ${release.tag_name} has more than one ffmpeg-N-...-linux64-gpl.tar.xz asset`,
+    );
+  }
+  return matches[0] as ReleaseAsset;
+}
+
+function blockedOutcome(latest: string): ToolUpdateOutcome {
+  return {
+    tool: "ffmpeg",
+    status: "blocked",
+    detail: `${NVENC_BLOCKED_ERROR} (build ${latest}); force an update to try it again.`,
+  };
+}
+
+/**
+ * The NVENC guard. When the live ffmpeg can encode with NVENC, every encoder
+ * that works now must keep working with the staged build; a build linked
+ * against a newer NVENC API than the driver offers lists the encoders but
+ * cannot open a session. Without a working live NVENC there is nothing to lose.
+ */
+async function stagedKeepsNvenc(deps: ToolUpdateDeps, stagedFfmpeg: string): Promise<boolean> {
+  const live = join(deps.config.binDir, "ffmpeg");
+  if (!existsSync(live)) {
+    return true;
+  }
+  const current = await probeNvenc(deps.runFile, live);
+  if (!nvencWorks(current)) {
+    return true;
+  }
+  const staged = await probeNvenc(deps.runFile, stagedFfmpeg);
+  return NVENC_CODECS.every((codec) => !current[codec] || staged[codec]);
+}
+
 async function updateFfmpeg(ctx: CheckContext): Promise<ToolUpdateOutcome> {
   const { deps } = ctx;
-  const release = await fetchRelease(deps, FFMPEG_RELEASE_API);
-  const archive = findAsset(release, FFMPEG_ASSET);
+  const tag = deps.getSettings()["tools.ffmpeg_release_tag"];
+  const release = await fetchRelease(deps, ffmpegReleaseApi(tag));
+  const archive = selectFfmpegAsset(release, tag);
   const latest = archive.updated_at;
   if (latest === undefined) {
-    throw new Error(`${FFMPEG_ASSET} has no updated_at in the release metadata`);
+    throw new Error(`${archive.name} has no updated_at in the release metadata`);
   }
   const before = updateToolState(deps.db, (state) => {
     state.ffmpeg.latest = latest;
   }).ffmpeg;
+  if (!ctx.force && latest !== before.asset_updated_at && latest === before.blocked_latest) {
+    return blockedOutcome(latest);
+  }
   const gated = gate(ctx, "ffmpeg", latest, before.asset_updated_at, before.rolled_back_from);
   if (gated !== null) {
     return gated;
@@ -802,15 +942,17 @@ async function updateFfmpeg(ctx: CheckContext): Promise<ToolUpdateOutcome> {
   const sums = findAsset(release, FFMPEG_SUMS_ASSET);
   const expected = parseChecksum(
     await (await fetchOk(deps, sums.browser_download_url, API_TIMEOUT_MS)).text(),
-    FFMPEG_ASSET,
+    archive.name,
   );
   await mkdir(ctx.staging, { recursive: true });
-  const archivePath = join(ctx.staging, FFMPEG_ASSET);
+  const archivePath = join(ctx.staging, archive.name);
   const actual = await download(deps, archive.browser_download_url, archivePath);
   if (actual !== expected) {
-    throw new Error(`checksum mismatch for ${FFMPEG_ASSET}; the download was discarded`);
+    throw new Error(`checksum mismatch for ${archive.name}; the download was discarded`);
   }
 
+  // BtbN archives hold one top-level directory named after the asset.
+  const root = archive.name.replace(/\.tar\.xz$/, "");
   const extract = await deps.runFile(
     deps.tarCommand ?? "tar",
     [
@@ -819,15 +961,15 @@ async function updateFfmpeg(ctx: CheckContext): Promise<ToolUpdateOutcome> {
       "--strip-components=2",
       "-C",
       ctx.staging,
-      `${FFMPEG_ARCHIVE_ROOT}/bin/ffmpeg`,
-      `${FFMPEG_ARCHIVE_ROOT}/bin/ffprobe`,
+      `${root}/bin/ffmpeg`,
+      `${root}/bin/ffprobe`,
     ],
     EXTRACT_TIMEOUT_MS,
   );
   if (extract.code !== 0) {
     const reason = extract.stderr.trim().split(/\r?\n/)[0] ?? "";
     throw new Error(
-      `could not unpack ${FFMPEG_ASSET} (tar exit ${String(extract.code)}) ${reason}`,
+      `could not unpack ${archive.name} (tar exit ${String(extract.code)}) ${reason}`,
     );
   }
   const stagedFfmpeg = join(ctx.staging, "ffmpeg");
@@ -843,6 +985,17 @@ async function updateFfmpeg(ctx: CheckContext): Promise<ToolUpdateOutcome> {
   );
   await verifyStaged(deps, stagedFfprobe, ["-version"], parseFfprobeVersion, "ffprobe");
 
+  if (!(await stagedKeepsNvenc(deps, stagedFfmpeg))) {
+    updateToolState(deps.db, (state) => {
+      state.ffmpeg.blocked_latest = latest;
+    });
+    deps.log.warn(
+      { tool: "ffmpeg", build: latest, version, tag },
+      "staged ffmpeg cannot use NVENC; kept the current build",
+    );
+    return blockedOutcome(latest);
+  }
+
   await swapIn(deps.config.binDir, ["ffmpeg", "ffprobe"], ctx.staging);
   updateToolState(deps.db, (state) => {
     state.ffmpeg.previous = state.ffmpeg.current;
@@ -851,6 +1004,7 @@ async function updateFfmpeg(ctx: CheckContext): Promise<ToolUpdateOutcome> {
     state.ffmpeg.asset_updated_at = latest;
     state.ffmpeg.updated_at = ctx.now;
     state.ffmpeg.rolled_back_from = null;
+    state.ffmpeg.blocked_latest = null;
   });
   deps.log.info({ tool: "ffmpeg", from: before.current, to: version }, "tool updated");
   return {
@@ -873,7 +1027,8 @@ async function checkOne(
     const outcome = tool === "ytdlp" ? await updateYtdlp(ctx) : await updateFfmpeg(ctx);
     updateToolState(deps.db, (state) => {
       state[tool].checked_at = now;
-      state[tool].last_error = null;
+      // A blocked build is a problem the owner has to see, not a clean check.
+      state[tool].last_error = outcome.status === "blocked" ? NVENC_BLOCKED_ERROR : null;
     });
     return outcome;
   } catch (error) {

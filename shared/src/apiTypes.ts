@@ -457,9 +457,25 @@ export const ToolVersionsSchema = z.object({
 });
 export type ToolVersionsInfo = z.infer<typeof ToolVersionsSchema>;
 
+/**
+ * `blocked`: a staged ffmpeg verified but could not use NVENC where the
+ * installed one can (a build too new for the driver), so it was not swapped
+ * in. Not retried for the same build until forced.
+ */
+export const TOOL_UPDATE_STATUSES = [
+  "updated",
+  "up_to_date",
+  "available",
+  "skipped",
+  "blocked",
+  "failed",
+] as const;
+export const ToolUpdateStatusSchema = z.enum(TOOL_UPDATE_STATUSES);
+export type ToolUpdateStatus = z.infer<typeof ToolUpdateStatusSchema>;
+
 export const ToolUpdateOutcomeSchema = z.object({
   tool: UpdatableToolSchema,
-  status: z.enum(["updated", "up_to_date", "available", "skipped", "failed"]),
+  status: ToolUpdateStatusSchema,
   detail: z.string(),
 });
 export type ToolUpdateOutcome = z.infer<typeof ToolUpdateOutcomeSchema>;
@@ -470,6 +486,8 @@ export const ToolsResponseSchema = z.object({
   js_runtime: z.string().nullable(),
   pot_provider_url: z.string(),
   auto_update: z.boolean(),
+  /** The BtbN release the ffmpeg updater follows (`tools.ffmpeg_release_tag`). */
+  ffmpeg_release_tag: z.string(),
   /** Present on POST /update: what each tool's check did. */
   outcomes: z.array(ToolUpdateOutcomeSchema).optional(),
 });

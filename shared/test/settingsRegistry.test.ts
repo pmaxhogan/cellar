@@ -47,6 +47,7 @@ const EXPECTED_DEFAULTS: Record<string, unknown> = {
   "tools.auto_update": true,
   "tools.pot_provider_url": "http://bgutil:4416",
   "tools.js_runtime": "node",
+  "tools.ffmpeg_release_tag": "autobuild-2025-12-31-14-28",
   "selfcheck.interval_hours": 24,
   "bulk.warn_gb": 20,
   "thumbnails.variants": [

@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { defaultSettings, type ResolvedSettings } from "@cellar/shared";
 import {
   createRunTool,
   FFMPEG_ASSET,
-  FFMPEG_RELEASE_API,
   FFMPEG_SUMS_ASSET,
+  ffmpegReleaseApi,
   runFile,
   YTDLP_ASSET,
   YTDLP_RELEASE_API,
@@ -87,6 +87,12 @@ export interface FakeRelease {
   ffmpegUpdatedAt?: string;
   ffmpegArchive?: Buffer;
   ffmpegSums?: string;
+  /** BtbN release tag; default `latest`. */
+  ffmpegTag?: string;
+  /** Archive asset name; default FFMPEG_ASSET. */
+  ffmpegAssetName?: string;
+  /** Other asset names listed in the release (never downloaded). */
+  ffmpegOtherAssets?: string[];
 }
 
 /** GitHub release API and asset downloads for both tools. */
@@ -109,14 +115,22 @@ export function githubRoutes(release: FakeRelease): Record<string, Route> {
   }
   if (release.ffmpegArchive !== undefined) {
     const archive = release.ffmpegArchive;
-    const sums = release.ffmpegSums ?? `${sha256(archive)}  ${FFMPEG_ASSET}\n`;
-    routes[FFMPEG_RELEASE_API] = () =>
+    const tag = release.ffmpegTag ?? "latest";
+    const name = release.ffmpegAssetName ?? FFMPEG_ASSET;
+    const sums =
+      release.ffmpegSums ?? `${sha256("other")}  other.zip\n${sha256(archive)}  ${name}\n`;
+    routes[ffmpegReleaseApi(tag)] = () =>
       json({
-        tag_name: "latest",
+        tag_name: tag,
         assets: [
+          ...(release.ffmpegOtherAssets ?? []).map((other) => ({
+            name: other,
+            browser_download_url: `${DL}/${other}`,
+            updated_at: "2000-01-01T00:00:00Z",
+          })),
           {
-            name: FFMPEG_ASSET,
-            browser_download_url: `${DL}/${FFMPEG_ASSET}`,
+            name,
+            browser_download_url: `${DL}/${name}`,
             ...(release.ffmpegUpdatedAt === undefined
               ? {}
               : { updated_at: release.ffmpegUpdatedAt }),
@@ -124,32 +138,74 @@ export function githubRoutes(release: FakeRelease): Record<string, Route> {
           { name: FFMPEG_SUMS_ASSET, browser_download_url: `${DL}/${FFMPEG_SUMS_ASSET}` },
         ],
       });
-    routes[`${DL}/${FFMPEG_ASSET}`] = () => bytes(archive);
+    routes[`${DL}/${name}`] = () => bytes(archive);
     routes[`${DL}/${FFMPEG_SUMS_ASSET}`] = () => bytes(sums);
   }
   return routes;
 }
 
-/** Build an ffmpeg-master-latest-linux64-gpl.tar.xz holding version scripts. */
-export async function buildFfmpegArchive(workDir: string, version: string): Promise<Buffer> {
-  const root = join(workDir, "ffmpeg-master-latest-linux64-gpl");
+/** Swap the routes a RoutedFetch serves, keeping its call log. */
+export function serveRoutes(github: RoutedFetch, routes: Record<string, Route>): void {
+  github.routes.clear();
+  for (const [url, route] of Object.entries(routes)) {
+    github.routes.set(url, route);
+  }
+}
+
+export interface FfmpegArchiveOptions {
+  /** Top-level directory; BtbN names it after the asset. Default the `latest` one. */
+  root?: string;
+  /** Contents of bin/ffmpeg; default a version script. */
+  ffmpegScript?: string;
+}
+
+/** Build a BtbN style ffmpeg archive (`<root>/bin/ffmpeg`, `<root>/bin/ffprobe`). */
+export async function buildFfmpegArchive(
+  workDir: string,
+  version: string,
+  options: FfmpegArchiveOptions = {},
+): Promise<Buffer> {
+  const rootName = options.root ?? "ffmpeg-master-latest-linux64-gpl";
+  const root = join(workDir, rootName);
   mkdirSync(join(root, "bin"), { recursive: true });
-  writeFileSync(join(root, "bin", "ffmpeg"), versionScript(`ffmpeg version ${version} Copyright`));
+  writeFileSync(
+    join(root, "bin", "ffmpeg"),
+    options.ffmpegScript ?? versionScript(`ffmpeg version ${version} Copyright`),
+  );
   writeFileSync(
     join(root, "bin", "ffprobe"),
     versionScript(`ffprobe version ${version} Copyright`),
   );
   writeFileSync(join(root, "README.txt"), "not extracted\n");
-  const archive = join(workDir, "build.tar.xz");
-  const result = await runFile(
-    TAR,
-    ["-cJf", archive, "-C", workDir, "ffmpeg-master-latest-linux64-gpl"],
-    60_000,
-  );
+  const archive = join(workDir, `${rootName}.build.tar.xz`);
+  const result = await runFile(TAR, ["-cJf", archive, "-C", workDir, rootName], 60_000);
   if (result.code !== 0) {
     throw new Error(`tar failed: ${result.stderr}`);
   }
   return readFileSync(archive);
+}
+
+/**
+ * An ffmpeg "binary" (a node script) that answers -version itself and hands
+ * everything else to scripts/fake-bin/ffmpeg.mjs with its own NVENC setup:
+ * FAKE_FFMPEG_NVENC=1 lists the NVENC encoders, and a scenario of
+ * `{ nvenc: "0" }` makes their test encode fail, like a build linked against
+ * a newer NVENC API than the driver offers.
+ */
+export function nvencFfmpegScript(version: string, nvenc: "works" | "listed-but-fails"): string {
+  const fake = pathToFileURL(join(fakeBinDir, "ffmpeg.mjs")).href;
+  const scenario = nvenc === "works" ? "{}" : JSON.stringify({ nvenc: "0" });
+  return [
+    'if (process.argv.includes("-version")) {',
+    `  process.stdout.write(${JSON.stringify(`ffmpeg version ${version} Copyright\n`)});`,
+    "} else {",
+    '  process.env.FAKE_FFMPEG_NVENC = "1";',
+    `  process.env.FAKE_FFMPEG_SCENARIO = ${JSON.stringify(scenario)};`,
+    "  delete process.env.FAKE_FFMPEG_STATE;",
+    `  import(${JSON.stringify(fake)});`,
+    "}",
+    "",
+  ].join("\n");
 }
 
 /** process.env without FAKE_* leaking in from the developer's shell. */
