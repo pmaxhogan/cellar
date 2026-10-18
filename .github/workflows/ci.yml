@@ -1,0 +1,116 @@
+# stack-template: ci/node-ts@1 68deb8eb8ed7 (adapted for the npm-workspaces layout)
+name: ci
+
+# Standard Node + TypeScript CI (stack standard ci.node-ts), split into the amber-shaped
+# jobs: lint (typecheck, eslint, prettier, ASCII), test (coverage + ratchet), build, e2e.
+#   - runs on every PR and on every push to main
+#   - workflow_dispatch exists on purpose: a Dependabot merge made with GITHUB_TOKEN
+#     triggers no push workflows, so the auto-merge fallback dispatches this one
+#   - least privilege: read-only contents, nothing else
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      # shared must be built before the other workspaces can resolve its types;
+      # npm run typecheck does that first.
+      - name: Typecheck
+        run: npm run typecheck
+      - name: ESLint
+        run: npx eslint .
+      - name: Prettier
+        run: npx prettier --check .
+      # Em/en dashes and other non-ASCII punctuation break terminals and email clients.
+      - name: ASCII check
+        run: node scripts/check-ascii.mjs
+
+  test:
+    name: Test (Node 26, coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Build shared
+        run: npm run build -w shared
+      # json-summary feeds the ratchet; cobertura feeds GitHub Code Quality's native
+      # coverage rule. Both reporters are configured in vitest.config.ts.
+      - name: Test with coverage
+        run: npm run test:coverage
+      - name: Coverage ratchet
+        run: npm run coverage:ratchet
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Build all workspaces
+        run: npm run build
+      - name: Check the server entrypoint was emitted
+        run: test -f server/dist/index.js
+      - name: Check the web bundles were emitted
+        run: test -f web/dist/index.html && test -f web/dist/share.html
+
+  e2e:
+    name: End to end smoke
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Build all workspaces
+        run: npm run build
+      - name: Install the Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run the smoke suite
+        run: npm run test:e2e -w e2e
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
