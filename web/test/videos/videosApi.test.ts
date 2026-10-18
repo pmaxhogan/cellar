@@ -15,7 +15,9 @@ import {
   metadataUrl,
   recheckVideo,
   revokeShareLink,
+  listShareLinks,
   sharePageUrl,
+  shareStatus,
   shareView,
   stateFromQuery,
   stateToApiQuery,
@@ -23,8 +25,8 @@ import {
   trashVideos,
   type VideoListState,
 } from "../../src/api/videos.ts";
-import { fakeServer, json, noContent } from "../helpers/fakeServer.ts";
-import { ID, idFor, listPage, videoRow } from "./fixtures.ts";
+import { fakeServer, json } from "../helpers/fakeServer.ts";
+import { ID, idFor, listPage, shareRow, videoRow } from "./fixtures.ts";
 
 function busyState(): VideoListState {
   return {
@@ -245,37 +247,47 @@ describe("video endpoints", () => {
 });
 
 describe("share links", () => {
-  it("fills what a lenient row leaves out", () => {
-    const view = shareView({ token: "abc" }, 42);
-    expect(view).toEqual({
+  it("adapts a detail row, deriving the status and URL", () => {
+    const base = {
       token: "abc",
       expires_at: null,
       revoked_at: null,
-      access_count: 0,
-      last_access_at: null,
+      access_count: 2,
       created_at: 42,
+    };
+    expect(shareView(base, 100)).toEqual({
+      ...base,
+      last_access_at: null,
       url: sharePageUrl("abc"),
+      status: "active",
     });
+    expect(shareView({ ...base, expires_at: 50 }, 100).status).toBe("expired");
+    expect(shareView({ ...base, revoked_at: 60 }, 100).status).toBe("revoked");
+    expect(shareStatus({ expires_at: 200, revoked_at: null }, 100)).toBe("active");
   });
 
-  it("creates and revokes", async () => {
+  it("keeps what a shares API row says", () => {
+    const row = shareRow({ status: "expired", last_access_at: 7 });
+    expect(shareView(row)).toMatchObject({ status: "expired", last_access_at: 7, url: row.url });
+  });
+
+  it("lists, creates and revokes", async () => {
     const server = fakeServer()
+      .on("GET", "/api/shares", () => json(listPage([shareRow()], 1, 1, 100)))
       .on("POST", "/api/shares", () =>
-        json({
-          token: "tok",
-          video_id: ID,
-          expires_at: 5,
-          revoked_at: null,
-          access_count: 0,
-          last_access_at: null,
-          created_at: 1,
-          url: "https://x/s/tok",
-        }),
+        json(shareRow({ token: "tok", url: "https://x/s/tok" }), 201),
       )
-      .on("POST", "/api/shares/tok/revoke", () => noContent());
+      .on("POST", "/api/shares/tok/revoke", () =>
+        json(shareRow({ token: "tok", revoked_at: 9, status: "revoked" })),
+      );
+    const listed = await listShareLinks(server.api, ID);
+    expect(listed.map((link) => link.status)).toEqual(["active"]);
+    const query = server.callsTo("GET", "/api/shares")[0]!.query;
+    expect(query.get("video_id")).toBe(ID);
+    expect(query.get("perPage")).toBe("100");
     const link = await createShareLink(server.api, ID, 5);
     expect(link.url).toBe("https://x/s/tok");
     expect(server.callsTo("POST", "/api/shares")[0]!.body).toEqual({ video_id: ID, expires_at: 5 });
-    await expect(revokeShareLink(server.api, "tok")).resolves.toBeUndefined();
+    expect((await revokeShareLink(server.api, "tok")).status).toBe("revoked");
   });
 });

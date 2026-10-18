@@ -176,7 +176,7 @@ function onSort(event: { sortField?: unknown; sortOrder?: number | null }): void
 // --- selection --------------------------------------------------------------
 
 function clearSelection(): void {
-  collector?.abort();
+  cancelCollect();
   selected.value = new Map();
   capped.value = false;
 }
@@ -213,6 +213,7 @@ async function selectAllMatching(): Promise<void> {
         collecting.value = progress;
       },
     });
+    if (controller.signal.aborted) return;
     selected.value = new Map(result.rows.map((row) => [row.id, row]));
     capped.value = result.capped;
   } catch (cause) {
@@ -229,6 +230,9 @@ async function selectAllMatching(): Promise<void> {
 
 function cancelCollect(): void {
   collector?.abort();
+  // Do not wait for the aborted request to settle before giving the UI back.
+  collector = null;
+  collecting.value = null;
 }
 
 // --- bulk actions -----------------------------------------------------------

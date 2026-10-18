@@ -1,10 +1,45 @@
+import type { ShareLinkRow } from "../../src/api/videos.ts";
 import type {
+  AccountRow,
+  LocationRow,
   MediaRow,
   VideoChangeRow,
   VideoDetail,
   VideoRow,
   VideoStatsPoint,
 } from "@cellar/shared";
+
+export function account(overrides: Partial<AccountRow> = {}): AccountRow {
+  return {
+    id: 1,
+    label: "main",
+    email: null,
+    channel_id: null,
+    status: "ok",
+    has_cookies: true,
+    scrape_budget_per_hour: null,
+    last_api_ok_at: null,
+    last_cookie_ok_at: null,
+    created_at: 1,
+    ...overrides,
+  };
+}
+
+export function location(overrides: Partial<LocationRow> = {}): LocationRow {
+  return {
+    id: 1,
+    label: "Fast disk",
+    container_path: "/media/fast",
+    quota_bytes: 0,
+    enabled: true,
+    used_bytes: 0,
+    fs_free_bytes: null,
+    mounted: true,
+    created_at: 1,
+    updated_at: 1,
+    ...overrides,
+  };
+}
 
 export const ID = "dQw4w9WgXcQ";
 export const ID2 = "abcdefghijk";
@@ -153,7 +188,7 @@ export function videoDetail(overrides: Partial<VideoDetail> = {}): VideoDetail {
   };
 }
 
-export function listPage(rows: VideoRow[], total = rows.length, page = 1, perPage = 50) {
+export function listPage<T = VideoRow>(rows: T[], total = rows.length, page = 1, perPage = 50) {
   return { rows, total, page, perPage };
 }
 
@@ -176,4 +211,21 @@ export function point(at: number, views: number | null, likes = 1, comments = 0)
 /** An id that is 11 valid characters, numbered so a test can make many. */
 export function idFor(index: number): string {
   return `vid${String(index).padStart(8, "0")}`;
+}
+
+export function shareRow(overrides: Partial<ShareLinkRow> = {}): ShareLinkRow {
+  return {
+    token: "tok_aaaaaaaaaaaaaaaaaaaa",
+    video_id: ID,
+    title: "A video about things",
+    channel_title: "Tech Channel",
+    expires_at: null,
+    revoked_at: null,
+    access_count: 3,
+    last_access_at: Date.now() - 60_000,
+    created_at: Date.now() - 3_600_000,
+    url: "https://cellar.test/s/tok_aaaaaaaaaaaaaaaaaaaa",
+    status: "active",
+    ...overrides,
+  };
 }
