@@ -200,7 +200,8 @@ Rules of the road (amber pattern):
   `not_found` 404, `conflict` 409, `invalid` 400, `immutable` 409, `unsupported` 400,
   `precondition_failed` 412, `quota_exhausted` 429, `no_account` 409. Error bodies are
   `{ error, code?, details? }`; validation failures carry `details.fields` (path ->
-  message).
+  message), and their `error` names the failing paths (`Invalid query string: kind.`),
+  never the rejected values.
 - `routes/validate.ts` parses bodies, queries and params with the shared zod schemas.
 - `shared/` is pure: no IO, no Node-only imports. It must be built before `server` and
   `web` resolve its types (`npm run build` and `npm run typecheck` do that in order).

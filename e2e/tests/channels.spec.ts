@@ -43,6 +43,8 @@ test("a channel added by UC id is listed as manual, searchable and removable", a
     // The Manual filter keeps it; Subscribed does not.
     await page.getByTestId("channel-kind").getByText("Subscribed", { exact: true }).click();
     await expect(row).toHaveCount(0);
+    // An empty table is not enough: a rejected filter also hides the row.
+    await expect(page.getByText("Could not load channels")).toHaveCount(0);
     await page.getByTestId("channel-kind").getByText("Manual", { exact: true }).click();
     await expect(row).toBeVisible();
 

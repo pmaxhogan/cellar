@@ -117,7 +117,7 @@ describe("the single error handler", () => {
     expect(response.statusCode).toBe(400);
     const body = response.json();
     expect(body.code).toBe("invalid");
-    expect(body.error).toBe("Invalid request body.");
+    expect(body.error).toBe("Invalid request body: name.");
     expect(Object.keys(body.details.fields)).toEqual(["name"]);
 
     const ok = await built.app.inject({

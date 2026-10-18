@@ -1,4 +1,4 @@
-import type { ChannelsListResponse } from "@cellar/shared";
+import { ChannelSourceKindSchema, type ChannelsListResponse } from "@cellar/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
@@ -12,7 +12,7 @@ import { parseBody, parseParams, parseQuery } from "./validate.ts";
 
 const ListQuerySchema = z.object({
   q: z.string().max(200).optional(),
-  kind: z.enum(["subscription", "manual"]).optional(),
+  kind: ChannelSourceKindSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   perPage: z.coerce.number().int().min(1).max(MAX_PER_PAGE).optional(),
   /** The rule builder's autocomplete asks with `limit`; an alias for perPage. */

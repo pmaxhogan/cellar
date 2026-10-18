@@ -3,7 +3,7 @@ import { mount, type VueWrapper } from "@vue/test-utils";
 import DataTable from "primevue/datatable";
 import Dialog from "primevue/dialog";
 import SelectButton from "primevue/selectbutton";
-import type { ChannelRow } from "@cellar/shared";
+import { ChannelSourceKindSchema, type ChannelRow } from "@cellar/shared";
 import ChannelsPage from "../../src/pages/ChannelsPage.vue";
 import { describeChannelRef, needsResolve } from "../../src/api/channels.ts";
 import { flush } from "../helpers/dom.ts";
@@ -199,6 +199,25 @@ describe("ChannelsPage list", () => {
     await flush();
     expect(lastList(server).query.has("kind")).toBe(false);
     expect(wrapper.findAll("tbody tr")).toHaveLength(1);
+  });
+
+  it("sends each kind filter as a value the server's channels query accepts", async () => {
+    const server = fakeServer({ "GET /api/channels": () => page([channel()]) });
+    const wrapper = await mountPage(server);
+    const options = wrapper.findComponent(SelectButton).props("options") as {
+      label: string;
+      value: string;
+    }[];
+    const sent: Record<string, string | null> = {};
+    for (const option of options) {
+      wrapper.findComponent(SelectButton).vm.$emit("update:modelValue", option.value);
+      await flush();
+      sent[option.label] = lastList(server).query.get("kind");
+    }
+    expect(sent).toEqual({ All: null, Subscribed: "subscription", Manual: "manual" });
+    for (const value of Object.values(sent)) {
+      if (value !== null) expect(ChannelSourceKindSchema.safeParse(value).success).toBe(true);
+    }
   });
 });
 

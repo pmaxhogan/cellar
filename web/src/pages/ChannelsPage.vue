@@ -44,7 +44,7 @@ const removeBusy = ref(false);
 
 const KIND_OPTIONS: { label: string; value: ChannelKindFilter }[] = [
   { label: "All", value: "all" },
-  { label: "Subscribed", value: "subscribed" },
+  { label: "Subscribed", value: "subscription" },
   { label: "Manual", value: "manual" },
 ];
 

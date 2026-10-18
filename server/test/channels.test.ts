@@ -1,4 +1,8 @@
-import { ChannelRowSchema, ChannelsListResponseSchema } from "@cellar/shared";
+import {
+  ChannelRowSchema,
+  ChannelSourceKindSchema,
+  ChannelsListResponseSchema,
+} from "@cellar/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { escapeLike, getChannel } from "../src/domain/channels.ts";
 import type { TempApp } from "./helpers.ts";
@@ -108,6 +112,23 @@ describe("GET /api/channels", () => {
     for (const query of ["?perPage=500", "?page=0", "?kind=other"]) {
       const res = await temp.app.inject({ method: "GET", url: `/api/channels${query}` });
       expect(res.statusCode).toBe(400);
+    }
+  });
+
+  it("rejects an unknown kind and names the field in the 400 message", async () => {
+    const res = await temp.app.inject({ method: "GET", url: "/api/channels?kind=subscribed" });
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.code).toBe("invalid");
+    expect(body.error).toBe("Invalid query string: kind.");
+    expect(Object.keys(body.details.fields)).toEqual(["kind"]);
+    expect(JSON.stringify(body)).not.toContain("subscribed");
+  });
+
+  it("accepts every kind the shared schema defines", async () => {
+    for (const kind of ChannelSourceKindSchema.options) {
+      const res = await temp.app.inject({ method: "GET", url: `/api/channels?kind=${kind}` });
+      expect(res.statusCode).toBe(200);
     }
   });
 

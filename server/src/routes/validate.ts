@@ -9,7 +9,7 @@ import { DomainError } from "../domain/errors.ts";
  * definition and the client infers its types from the same file.
  */
 
-function issueDetails(error: z.ZodError): Record<string, unknown> {
+function issueDetails(error: z.ZodError): { fields: Record<string, string> } {
   const fields: Record<string, string> = {};
   for (const issue of error.issues) {
     const path = issue.path.join(".");
@@ -23,7 +23,12 @@ function parse<T>(schema: z.ZodType<T>, data: unknown, what: string): T {
   if (result.success) {
     return result.data;
   }
-  throw new DomainError("invalid", `Invalid ${what}.`, issueDetails(result.error));
+  const details = issueDetails(result.error);
+  // Name the offending fields (schema paths only, never the rejected values) so
+  // the message the UI shows says what to fix.
+  const names = Object.keys(details.fields).filter((name) => name !== "(root)");
+  const suffix = names.length === 0 ? "" : `: ${names.join(", ")}`;
+  throw new DomainError("invalid", `Invalid ${what}${suffix}.`, details);
 }
 
 export function parseBody<T>(schema: z.ZodType<T>, request: FastifyRequest): T {

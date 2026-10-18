@@ -3,11 +3,13 @@ import {
   ChannelsListResponseSchema,
   type ChannelRef,
   type ChannelRow,
+  type ChannelSourceKind,
   type ChannelsListResponse,
 } from "@cellar/shared";
 import { buildQuery, type ApiClient } from "./client.ts";
 
-export type ChannelKindFilter = "all" | "subscribed" | "manual";
+/** "all" is UI only; the rest are the server's `kind` values, sent as is. */
+export type ChannelKindFilter = "all" | ChannelSourceKind;
 
 export interface ChannelQuery {
   q?: string;

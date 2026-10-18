@@ -110,6 +110,13 @@ export type SettingsResponse = z.infer<typeof SettingsResponseSchema>;
 // ---------------------------------------------------------------------------
 // Channel autocomplete used by the rule builder: GET /api/channels?q=<text>&limit=10
 // ---------------------------------------------------------------------------
+/**
+ * The `kind` filter of GET /api/channels: which channel source a row must have.
+ * The values are the `channel_sources.kind` names, shared so the admin UI cannot
+ * drift from what the server accepts.
+ */
+export const ChannelSourceKindSchema = z.enum(["subscription", "manual"]);
+export type ChannelSourceKind = z.infer<typeof ChannelSourceKindSchema>;
 export const ChannelRowSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
