@@ -19,6 +19,7 @@ import {
   type RecordedCall,
 } from "../helpers/adminFetch.ts";
 import { mountGlobals } from "../helpers/mount.ts";
+import { fakeServer as abortingServer, json as reply } from "../helpers/fakeServer.ts";
 import { account, ID, ID2, idFor, listPage, location, videoRow } from "./fixtures.ts";
 
 let toasts: CapturedToast[];
@@ -188,6 +189,11 @@ describe("VideosPage list", () => {
       sort: "upload_date",
       dir: "asc",
     });
+
+    table.vm.$emit("sort", { sortField: "views", sortOrder: -1 });
+    await flush();
+    expect(lastList(server).query.get("dir")).toBe("desc");
+    expect(table.props("sortOrder")).toBe(-1);
 
     table.vm.$emit("sort", { sortField: null, sortOrder: 0 });
     await flush();
@@ -438,5 +444,91 @@ describe("VideosPage selection and bulk actions", () => {
     expect(dialog.props("visible")).toBe(true);
     expect(dialog.props("ids")).toEqual([ID2]);
     expect(dialog.props("sample")?.title).toBe("Second");
+  });
+
+  it("ignores a collection that finishes after it was stopped", async () => {
+    const server = fakeServer({
+      ...lookups(),
+      "GET /api/videos": (call) =>
+        call.query.get("perPage") === "200"
+          ? new Promise((resolve) =>
+              setTimeout(() => resolve(listPage([videoRow(), videoRow({ id: ID2 })], 2)), 20),
+            )
+          : listPage([videoRow()], 900),
+    });
+    const { wrapper } = await mountAt(server);
+    await check(wrapper, "[data-test='select-page']");
+    await button(wrapper, "[data-action='select-all-matching']").trigger("click");
+    await button(wrapper, "[data-action='cancel-collect']").trigger("click");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await flush();
+    expect(wrapper.find("[data-test='selected-count']").text()).toBe("1 video selected");
+  });
+
+  it("says when a selection is capped at the bulk limit", async () => {
+    const total = 10_050;
+    const server = fakeServer({
+      ...lookups(),
+      "GET /api/videos": (call) => {
+        const page = Number(call.query.get("page"));
+        const perPage = Number(call.query.get("perPage"));
+        const rows = Array.from({ length: perPage }, (_, i) =>
+          videoRow({ id: idFor((page - 1) * perPage + i) }),
+        );
+        return listPage(rows, total, page, perPage);
+      },
+    });
+    const { wrapper } = await mountAt(server);
+    await check(wrapper, "[data-test='select-page']");
+    expect(wrapper.find("[data-action='select-all-matching']").text()).toBe(
+      "Select all 10,000 matching",
+    );
+    await button(wrapper, "[data-action='select-all-matching']").trigger("click");
+    await flush(10);
+    expect(wrapper.find("[data-test='selected-count']").text()).toBe("10,000 videos selected");
+    expect(wrapper.find("[data-test='selection-capped']").text()).toContain(
+      "the first 10,000 of 10,050",
+    );
+  });
+
+  it("queues download now without duplicates", async () => {
+    const server = serve([videoRow()]);
+    server.on(`POST /api/videos/${ID}/download-now`, () =>
+      json({ job_id: 3, deduped: false }, 202),
+    );
+    const { wrapper } = await mountAt(server);
+    await check(wrapper, `[data-select='${ID}']`);
+    await button(wrapper, "[data-action='bulk-download-now']").trigger("click");
+    await flush();
+    expect(toasts.at(-1)).toMatchObject({ summary: "Download queued", detail: "1 job queued." });
+  });
+});
+
+describe("VideosPage without a router or with a real abort", () => {
+  it("links titles with plain anchors when no router is installed", async () => {
+    const server = serve([videoRow()]);
+    const wrapper = mount(VideosPage, { global: mountGlobals({ api: server.api }) });
+    await flush();
+    expect(wrapper.find(`a[data-video='${ID}']`).attributes("href")).toBe(`/videos/${ID}`);
+    wrapper.findComponent(DataTable).vm.$emit("page", { page: 1, rows: 50 });
+    await flush();
+    expect(lastList(server).query.get("page")).toBe("2");
+  });
+
+  it("swallows the abort of a replaced load", async () => {
+    let calls = 0;
+    const server = abortingServer()
+      .on("GET", "/api/videos", () => {
+        calls += 1;
+        return calls === 1 ? new Promise<Response>(() => undefined) : reply(listPage([videoRow()]));
+      })
+      .on("GET", "/api/accounts", () => reply({ rows: [] }))
+      .on("GET", "/api/locations", () => reply({ rows: [] }));
+    const wrapper = mount(VideosPage, { global: mountGlobals({ api: server.api }) });
+    await flush();
+    wrapper.findComponent(DataTable).vm.$emit("page", { page: 1, rows: 50 });
+    await flush();
+    expect(wrapper.find(".error-state").exists()).toBe(false);
+    expect(wrapper.findAll("tbody tr")).toHaveLength(1);
   });
 });

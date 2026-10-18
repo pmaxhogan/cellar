@@ -172,6 +172,8 @@ describe("VideoPage sections", () => {
         next_recheck_at: null,
         recheck_tier: null,
         consecutive_recheck_failures: 2,
+        ryd_ratio: null,
+        thumbnail_url: null,
         formats: {
           max_height: null,
           max_fps: null,
@@ -190,6 +192,7 @@ describe("VideoPage sections", () => {
     expect(find(wrapper, "[data-test='formats']").text()).toBe("-");
     expect(find(wrapper, "[data-test='metadata']").text()).toContain("2 failed in a row");
     expect(find(wrapper, "[data-test='sources']").text()).toContain("no account source");
+    expect(wrapper.find("[data-test='player-none'] img").exists()).toBe(false);
   });
 
   it("shows HDR and an unrounded frame rate", async () => {
@@ -203,8 +206,15 @@ describe("VideoPage sections", () => {
           has_h264: true,
           is_hdr: true,
         },
+        type: "podcast",
+        caption_available: false,
+        default_language: null,
+        channel_title: null,
       }),
     );
+    const metadata = find(wrapper, "[data-test='metadata']").text();
+    expect(metadata).toContain("podcast");
+    expect(find(wrapper, "[data-test='video-channel']").text()).toBe("UC0123456789abcdefghijkl");
     expect(find(wrapper, "[data-test='formats']").text()).toBe("up to 1080p; H.264; HDR");
   });
 });
@@ -654,5 +664,57 @@ describe("VideoPage share links", () => {
     await find(wrapper, "[data-action='share-copy']").trigger("click");
     await flush();
     expect(toasts.at(-1)).toMatchObject({ severity: "warn", summary: "Could not copy" });
+  });
+});
+
+describe("VideoPage edges", () => {
+  it("shows not found without a router or an id", async () => {
+    const wrapper = mount(VideoPage, {
+      global: { ...mountGlobals({ api: serve().api }), stubs: { teleport: true, Chart: true } },
+    });
+    await flush();
+    const empty = find(wrapper, "[data-test='video-not-found']");
+    expect(empty.text()).toContain("(none)");
+    expect(empty.find("a").attributes("href")).toBe("/");
+  });
+
+  it("names the channel by id without a router or a title", async () => {
+    const server = serve({ channel_title: null });
+    const wrapper = mount(VideoPage, {
+      props: { id: ID },
+      global: { ...mountGlobals({ api: server.api }), stubs: { teleport: true, Chart: true } },
+    });
+    await flush(5);
+    expect(find(wrapper, "[data-test='video-channel'] a").text()).toBe("UC0123456789abcdefghijkl");
+  });
+
+  it("drops a stale load when the route moves to another video", async () => {
+    const other = "zyxwvutsrqp";
+    const server = serve()
+      .on("GET", BASE, () => new Promise<Response>(() => undefined))
+      .on("GET", `/api/videos/${other}`, () => json(videoDetail({ id: other, title: "Other" })));
+    const router = createRouter({ history: createMemoryHistory(), routes });
+    await router.push(`/videos/${ID}`);
+    await router.isReady();
+    const globals = mountGlobals({ api: server.api, router });
+    const wrapper = mount(VideoPage, {
+      global: { ...globals, stubs: { ...globals.stubs, Chart: true } },
+    });
+    await flush();
+    await router.push(`/videos/${other}`);
+    await flush(5);
+    expect(wrapper.find("h1").text()).toBe("Other");
+    expect(wrapper.text()).not.toContain("Could not load this video");
+  });
+
+  it("clamps a seek to the known duration", async () => {
+    const wrapper = await mountVideo(serve({ thumbnail_url: null }));
+    const video = find(wrapper, "[data-test='player-video']");
+    expect(video.attributes("poster")).toBeUndefined();
+    const el = video.element as HTMLVideoElement;
+    Object.defineProperty(el, "duration", { configurable: true, get: () => 40 });
+    el.currentTime = 38;
+    await find(wrapper, ".player__frame").trigger("keydown", { key: "l" });
+    expect(el.currentTime).toBe(40);
   });
 });

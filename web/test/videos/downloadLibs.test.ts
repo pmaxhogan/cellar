@@ -364,4 +364,37 @@ describe("downloadToFolder", () => {
     });
     expect(result).toMatchObject({ cancelled: true, items: [] });
   });
+
+  it("stops between files when canceled after one finishes", async () => {
+    const controller = new AbortController();
+    const server = fakeServer()
+      .on("GET", `/api/videos/${ID}`, () => json(videoDetail()))
+      .on("GET", `/api/videos/${ID}/media/13`, () => text("WEBVTT en"))
+      .on("GET", `/api/videos/${ID}/media/14`, () => text("WEBVTT de"));
+    const result = await downloadToFolder({
+      api: server.api,
+      ids: [ID],
+      kind: "captions",
+      template: "",
+      directory: fakeFolder(),
+      signal: controller.signal,
+      onProgress: (items) => {
+        if (items.some((item) => item.state === "done")) controller.abort();
+      },
+    });
+    expect(result).toMatchObject({ written: 1, cancelled: true });
+    expect(server.callsTo("GET", `/api/videos/${ID}/media/14`)).toHaveLength(0);
+  });
+});
+
+describe("planVideoFiles edge cases", () => {
+  it("handles a file without an extension and a video without an upload date", () => {
+    const detail = videoDetail({
+      upload_date: null,
+      media: [mediaRow({ rel_path: "x/video" })],
+    });
+    expect(planVideoFiles(detail, "video", "{upload_date}{title}").map((f) => f.name)).toEqual([
+      "A video about things",
+    ]);
+  });
 });
