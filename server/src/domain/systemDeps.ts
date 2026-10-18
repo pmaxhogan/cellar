@@ -82,6 +82,10 @@ export function listLocationsFallback(db: Db): LocationInfo[] {
     }));
 }
 
+function probeFailed(error: unknown): { ok: false; detail: string } {
+  return { ok: false, detail: error instanceof Error ? error.message : "probe failed" };
+}
+
 export function createSystemDeps(input: {
   config: Config;
   log: Logger;
@@ -121,8 +125,11 @@ export function createSystemDeps(input: {
       })),
     accounts: {
       list: () => listAccounts(db).map((row) => ({ id: row.id, label: row.label })),
-      checkApi: (id) => checkAccountApi(service, id),
-      checkCookies: (id) => checkAccountCookies(service, id),
+      // A probe must never throw into the self-check: a missing or broken
+      // account is reported as a failed check with the reason.
+      checkApi: (id) => checkAccountApi(service, id).catch((error: unknown) => probeFailed(error)),
+      checkCookies: (id) =>
+        checkAccountCookies(service, id).catch((error: unknown) => probeFailed(error)),
     },
     proxies: { listDecrypted: () => listProxiesDecrypted(service) },
     getSettings: () => getSettings(db, config),
