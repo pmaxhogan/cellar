@@ -45,6 +45,7 @@ const IMPLEMENTED = new Set([
   "/proxies",
   "/self-check",
   "/settings",
+  "/shares",
 ]);
 
 describe("page stubs", () => {
