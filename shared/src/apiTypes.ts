@@ -839,3 +839,160 @@ export const BulkDownloadEstimateSchema = z.object({
 });
 export type BulkDownloadEstimate = z.infer<typeof BulkDownloadEstimateSchema>;
 // --- end wave2C ---
+// --- wave5A ---
+// Share links (server/src/domain/shares.ts, routes/shares.ts, public/share.ts).
+//   GET    /api/shares?SharesListQuery          -> SharesListResponse
+//   POST   /api/shares        <- ShareCreateRequest -> 201 ShareLinkRow
+//   GET    /api/shares/:token                   -> ShareLinkRow
+//   POST   /api/shares/:token/revoke            -> ShareLinkRow (idempotent)
+//   POST   /api/shares/revoke <- ShareRevokeBulkRequest -> ShareRevokeBulkResponse
+//   DELETE /api/shares/:token                   -> 204 (revoked links only, else 409)
+// Public, no auth; every invalid state answers the same 404 HTML page:
+//   GET /s/:token                 share.html with SharePublicData injected as
+//                                 <script id="share-data" type="application/json">
+//   GET /s/:token/meta            -> SharePublicData
+//   GET /s/:token/video, /audio   the current file (HTTP Range, HEAD, ?download=1)
+//   GET /s/:token/captions/:lang  -> text/vtt
+//   GET /s/:token/thumbnail       -> image/jpeg (best stored variant)
+//   GET /s/:token/metadata.json   -> the stored info.json minus local paths, else a
+//                                    picked subset of the video row; both carry share: true
+// ---------------------------------------------------------------------------
+
+/** 16 random bytes, base64url without padding: exactly 22 characters. */
+export const SHARE_TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
+export const ShareTokenSchema = z.string().regex(SHARE_TOKEN_RE, "Not a share token.");
+
+export const SHARE_STATUSES = ["active", "expired", "revoked"] as const;
+export const ShareStatusSchema = z.enum(SHARE_STATUSES);
+export type ShareStatus = z.infer<typeof ShareStatusSchema>;
+
+export const SHARE_SORT_KEYS = [
+  "created_at",
+  "expires_at",
+  "access_count",
+  "last_access_at",
+] as const;
+export const ShareSortSchema = z.enum(SHARE_SORT_KEYS);
+export type ShareSort = z.infer<typeof ShareSortSchema>;
+
+export const SHARE_PER_PAGE = [25, 50, 100] as const;
+
+export const ShareLinkRowSchema = z.object({
+  token: z.string(),
+  video_id: z.string(),
+  /** The video's title (null until its metadata is known). */
+  title: z.string().nullable(),
+  channel_title: z.string().nullable(),
+  /** Epoch ms; null = never expires. */
+  expires_at: z.number().int().nullable(),
+  revoked_at: z.number().int().nullable(),
+  access_count: z.number().int().nonnegative(),
+  last_access_at: z.number().int().nullable(),
+  created_at: z.number().int(),
+  /** Absolute public URL, from PUBLIC_ORIGIN. */
+  url: z.string(),
+  /** Computed: revoked wins over expired. */
+  status: ShareStatusSchema,
+});
+export type ShareLinkRow = z.infer<typeof ShareLinkRowSchema>;
+
+/** The filter half of the list query; also what "revoke all matching" carries. */
+export const ShareFilterSchema = z.object({
+  /** Case-insensitive substring of the video title or the token. */
+  q: z.string().trim().max(200).optional(),
+  status: ShareStatusSchema.optional(),
+  video_id: VideoIdSchema.optional(),
+});
+export type ShareFilter = z.infer<typeof ShareFilterSchema>;
+
+export const SharesListQuerySchema = ShareFilterSchema.extend({
+  page: z.coerce.number().int().positive().default(1),
+  perPage: z.coerce
+    .number()
+    .int()
+    .refine((value) => (SHARE_PER_PAGE as readonly number[]).includes(value), {
+      message: "perPage must be 25, 50 or 100.",
+    })
+    .default(25),
+  sort: ShareSortSchema.default("created_at"),
+  dir: z.enum(["asc", "desc"]).default("desc"),
+});
+export type SharesListQuery = z.infer<typeof SharesListQuerySchema>;
+export type SharesListQueryInput = z.input<typeof SharesListQuerySchema>;
+
+export const SharesListResponseSchema = pagedSchema(ShareLinkRowSchema);
+export type SharesListResponse = z.infer<typeof SharesListResponseSchema>;
+
+export const ShareCreateRequestSchema = z.object({
+  video_id: VideoIdSchema,
+  /** Epoch ms in the future, or null (or omitted) for a link that never expires. */
+  expires_at: z.number().int().positive().nullable().default(null),
+});
+export type ShareCreateRequest = z.infer<typeof ShareCreateRequestSchema>;
+export type ShareCreateRequestInput = z.input<typeof ShareCreateRequestSchema>;
+
+/** Most tokens one bulk revoke may name. */
+export const MAX_SHARE_REVOKE_TOKENS = 10_000;
+
+export const ShareRevokeBulkRequestSchema = z.union([
+  z.object({ tokens: z.array(ShareTokenSchema).min(1).max(MAX_SHARE_REVOKE_TOKENS) }).strict(),
+  // Paging and sort fields are accepted and ignored.
+  z.object({ all_matching: SharesListQuerySchema }).strict(),
+]);
+export type ShareRevokeBulkRequest = z.infer<typeof ShareRevokeBulkRequestSchema>;
+export type ShareRevokeBulkRequestInput = z.input<typeof ShareRevokeBulkRequestSchema>;
+
+export const ShareRevokeBulkResponseSchema = z.object({
+  /** Links newly revoked by this call (already revoked ones are not counted). */
+  count: z.number().int().nonnegative(),
+});
+export type ShareRevokeBulkResponse = z.infer<typeof ShareRevokeBulkResponseSchema>;
+
+/** The longest description the public payload carries. */
+export const SHARE_DESCRIPTION_MAX = 2000;
+
+/**
+ * What the public share page gets (injected into the HTML, and from /meta). It
+ * names nothing outside this one video: no settings, accounts, sources, rules,
+ * locations or file paths.
+ */
+export const SharePublicDataSchema = z.object({
+  token: z.string(),
+  video: z.object({
+    id: z.string(),
+    title: z.string().nullable(),
+    channel_title: z.string().nullable(),
+    upload_date: z.number().int().nullable(),
+    duration_s: z.number().nullable(),
+    /** At most SHARE_DESCRIPTION_MAX characters. */
+    description: z.string().nullable(),
+    views: z.number().int().nullable(),
+    likes: z.number().int().nullable(),
+  }),
+  /**
+   * The file the player plays: the current video media, else the current audio
+   * media. Null when nothing is downloaded. `has_audio_only` is true when a
+   * separate audio-only file is available too (the audio download).
+   */
+  media: z
+    .object({
+      kind: z.enum(["video", "audio"]),
+      mime: z.string(),
+      size_bytes: z.number().int().nonnegative(),
+      height: z.number().int().nullable(),
+      has_audio_only: z.boolean(),
+    })
+    .nullable(),
+  captions: z.array(z.object({ lang: z.string(), label: z.string() })),
+  /** True when /s/:token/thumbnail has an image. */
+  thumbnail: z.boolean(),
+  downloads: z.object({
+    video: z.string().optional(),
+    audio: z.string().optional(),
+    /** lang -> URL. */
+    captions: z.record(z.string(), z.string()),
+    metadata: z.string(),
+  }),
+});
+export type SharePublicData = z.infer<typeof SharePublicDataSchema>;
+// --- end wave5A ---
