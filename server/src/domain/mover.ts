@@ -26,7 +26,15 @@ export const MOVE_SCAN_INTERVAL_MS = 10 * 60_000;
 
 type MoverDeps = Pick<
   PipelineDeps,
-  "db" | "log" | "now" | "locations" | "getEffective" | "logActivity" | "recordFsError" | "enqueue"
+  | "db"
+  | "log"
+  | "now"
+  | "locations"
+  | "getEffective"
+  | "logActivity"
+  | "recordFsError"
+  | "enqueue"
+  | "rename"
 >;
 
 export interface MoveResult {
@@ -105,7 +113,11 @@ export async function moveVideoMedia(
         throw new Error("the copy's sha256 does not match the stored hash");
       }
       await mkdir(dirname(targetPath), { recursive: true });
-      await atomicRename(stagingFile, targetPath);
+      await atomicRename(
+        stagingFile,
+        targetPath,
+        deps.rename === undefined ? {} : { rename: deps.rename },
+      );
     } catch (error) {
       await unlink(stagingFile).catch(() => undefined);
       await removeEmptyParents(staging, target.container_path);

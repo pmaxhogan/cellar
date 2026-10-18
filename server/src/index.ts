@@ -11,6 +11,8 @@ import { createRulesDeps } from "./domain/ruleEval.ts"; // wave2B
 import { ensureDefaultRules } from "./domain/rules.ts"; // wave2B
 import { registerRuleHandlers, registerRuleSchedules } from "./jobs/handlers/evalPass.ts"; // wave2B
 import { jobRegistry } from "./jobs/types.ts"; // wave2B
+import { bootPipeline } from "./jobs/pipelineBoot.ts"; // wave3
+import { createFallbackPipelineDeps } from "./jobs/pipelineFallbacks.ts"; // wave3
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -66,6 +68,13 @@ async function main(): Promise<void> {
   registerRuleHandlers(jobRegistry, rulesDeps);
   registerRuleSchedules(scheduler, rulesDeps);
   // --- end wave2B boot ---
+  // --- wave3 boot ---
+  // Media pipeline: download, transcode, move, reap, canary handlers plus the hourly
+  // reap and the move scan. PLACEHOLDER deps (see jobs/pipelineFallbacks.ts): the
+  // orchestrator swaps in accounts, proxies, settings, effective settings, locations
+  // and the Scheduler's enqueue/every.
+  bootPipeline(createFallbackPipelineDeps({ config, db, log, events }));
+  // --- end wave3 boot ---
 
   const reminder = config.insecureMode
     ? setInterval(() => {

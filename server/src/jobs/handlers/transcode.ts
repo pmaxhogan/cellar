@@ -184,11 +184,6 @@ export async function runTranscode(deps: PipelineDeps, ctx: JobContext): Promise
     const sha256 = await sha256File(output);
     const { size } = await stat(output);
     await atomicRename(output, finalPath, deps.rename === undefined ? {} : { rename: deps.rename });
-    if (finalPath !== sourcePath) {
-      await unlink(sourcePath).catch((error: unknown) => {
-        ctx.log.warn({ err: error }, "could not delete the original after the transcode");
-      });
-    }
     deps.db.run(
       `UPDATE media SET rel_path = ?, size_bytes = ?, sha256 = ?, vcodec = ?, acodec = ?,
                         height = ?, fps = ?, bitrate = ?, transcoded_from = ?
@@ -204,6 +199,12 @@ export async function runTranscode(deps: PipelineDeps, ctx: JobContext): Promise
       source.vcodec ?? row.vcodec ?? "unknown",
       row.id,
     );
+    // The row points at the new file before the original goes.
+    if (finalPath !== sourcePath) {
+      await unlink(sourcePath).catch((error: unknown) => {
+        ctx.log.warn({ err: error }, "could not delete the original after the transcode");
+      });
+    }
     deps.logActivity({
       kind: "transcode.done",
       message: `Transcoded ${videoId} from ${source.vcodec ?? "?"} to ${plan.family} (${plan.encoder}).`,
