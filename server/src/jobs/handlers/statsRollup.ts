@@ -8,7 +8,9 @@ import type { JobContext, JobRegistry } from "../types.ts";
 /**
  * The `stats_rollup` job (maintenance class): today's stats_daily points plus
  * a short backfill, so the day that just ended is finalised even when one
- * daily run was missed.
+ * daily run was missed. The daily run also takes yesterday's storage figure
+ * from the files on disk just after midnight, so bytes_used reads as the end
+ * of each day.
  *
  * Scheduler.every() is interval based, not wall-clock based, so the daily
  * schedule enqueues the job with run_after set to the next 00:10 UTC: the
@@ -41,8 +43,19 @@ function triggerOf(payload: unknown): StatsRollupTrigger {
   return trigger === "boot" ? "boot" : "daily";
 }
 
+/**
+ * How long after midnight UTC the live storage figure still stands in for the
+ * end of yesterday. A daily run that lands later (the process was down) leaves
+ * yesterday's snapshot alone rather than book today's changes against it.
+ */
+export const FINALISE_WINDOW_MS = 6 * 3_600_000;
+
 export async function runStatsRollupJob(deps: StatsRollupDeps, ctx: JobContext): Promise<void> {
   const now = (deps.now ?? Date.now)();
+  const today0 = Date.parse(`${utcDay(now)}T00:00:00Z`);
+  if (triggerOf(ctx.job.payload) === "daily" && now - today0 < FINALISE_WINDOW_MS) {
+    rollupDaily(ctx.db, { day: utcDay(today0 - DAY_MS), now, refreshBytes: true });
+  }
   const filled = backfill(ctx.db, { days: STATS_ROLLUP_BACKFILL_DAYS, now });
   const today = rollupDaily(ctx.db, { now });
   ctx.checkpoint();

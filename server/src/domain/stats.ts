@@ -17,9 +17,11 @@ import { invalid } from "./errors.ts";
  * past day from timestamps the catalog keeps (downloaded_at, created_at,
  * gone_since, the quota_usage day rows), so a rollup is idempotent and a
  * backfill may recompute old days. bytes_used cannot: the reaper deletes the
- * media rows it frees, so a past day's figure is a snapshot. A backfill keeps
- * an existing snapshot and only reconstructs one (from the files still on
- * disk) when the row is missing.
+ * media rows it frees, so a past day's figure is a snapshot. Today's row
+ * always takes the live figure, the daily job finalises yesterday's with the
+ * live figure just after midnight (refreshBytes), and a backfill otherwise
+ * keeps an existing snapshot, only reconstructing one (from the files still
+ * on disk) when the row is missing. So bytes_used reads as the end of its day.
  */
 
 export const DAY_MS = 86_400_000;
@@ -84,6 +86,11 @@ export interface RollupOptions {
   /** UTC day to roll up. Defaults to today. */
   day?: string;
   now: number;
+  /**
+   * Overwrite bytes_used with the live figure. Defaults to true for today and
+   * false for a past day, which keeps its snapshot.
+   */
+  refreshBytes?: boolean;
 }
 
 /**
@@ -98,8 +105,7 @@ export function rollupDaily(db: Db, options: RollupOptions): StatsDailyPoint[] {
   }
   const start = dayStart(day);
   const end = start + DAY_MS;
-  /** Today's bytes are always the live figure; a past day keeps its snapshot. */
-  const liveBytes = day === today ? 1 : 0;
+  const liveBytes = (options.refreshBytes ?? day === today) ? 1 : 0;
 
   const locations = db.all<{ id: number }>(
     "SELECT id FROM locations WHERE enabled = 1 ORDER BY id",

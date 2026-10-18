@@ -1064,8 +1064,9 @@ One `Scheduler` (amber shape), `server/src/jobs/scheduler.ts`:
   update check (first run 5 minutes after boot), stats rollup (`stats_rollup`,
   maintenance class: the daily schedule queues it for the next 00:10 UTC, a boot with
   no row for today queues it at once, and each run rolls up today and recomputes the
-  two days before; a past day keeps its `bytes_used` snapshot because reaped files
-  leave no rows to rebuild it from). The self-check runs at boot and every
+  two days before; `bytes_used` is finalised just after the day ends by the daily run,
+  and otherwise a past day keeps its snapshot because reaped files leave no rows to
+  rebuild it from). The self-check runs at boot and every
   `selfcheck.interval_hours`.
 
 Job types: `ingest_history`, `ingest_watch_later`, `ingest_liked`,

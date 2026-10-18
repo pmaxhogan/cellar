@@ -377,6 +377,26 @@ describe("stats_rollup job", () => {
     });
   });
 
+  it("finalises yesterday's storage figure only on a timely daily run", async () => {
+    seedCatalog();
+    const yesterday = "2026-10-17";
+    const queue = new JobQueue(db, { registry: new JobRegistry() });
+    const run = async (trigger: string, now: number): Promise<number | undefined> => {
+      db.run(
+        `INSERT INTO stats_daily (day, location_id, bytes_used) VALUES (?, 0, 9999)
+         ON CONFLICT (day, location_id) DO UPDATE SET bytes_used = 9999`,
+        yesterday,
+      );
+      await runStatsRollupJob({ db, now: () => now }, makeCtx(queue, { trigger }));
+      return row(yesterday, 0)?.bytes_used;
+    };
+    const justAfterMidnight = at(TODAY) + 12 * 60_000;
+    // Yesterday's files: the older v1 version, v2's audio and v4 on the disabled location.
+    expect(await run("daily", justAfterMidnight)).toBe(2700);
+    expect(await run("boot", justAfterMidnight)).toBe(9999);
+    expect(await run("daily", NOW)).toBe(9999);
+  });
+
   it("treats an unknown payload as the daily trigger", async () => {
     const queue = new JobQueue(db, { registry: new JobRegistry() });
     await runStatsRollupJob({ db, now: () => NOW }, makeCtx(queue, null));
