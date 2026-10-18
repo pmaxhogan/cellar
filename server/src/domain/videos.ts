@@ -1,4 +1,5 @@
 import {
+  isChannelId,
   isVideoId,
   type MediaRow,
   type VideoChangeRow,
@@ -49,6 +50,33 @@ export function buildFtsQuery(input: string): string | null {
     return null;
   }
   return terms.map((term, index) => `"${term}"${index === terms.length - 1 ? "*" : ""}`).join(" ");
+}
+
+export interface SearchTerms {
+  /** Channel ids typed or pasted into the box, matched against v.channel_id. */
+  channelIds: string[];
+  /** Everything else, for buildFtsQuery. */
+  text: string;
+}
+
+/**
+ * Pull whole channel ids (`UC` plus 22 characters) out of the search input.
+ * They are not FTS columns (unicode61 would split an id on `-` and `_`), so
+ * they become a `v.channel_id IN (...)` filter and the remaining words go to
+ * full text search. Double quotes around an id are ignored.
+ */
+export function splitSearchTerms(input: string): SearchTerms {
+  const channelIds: string[] = [];
+  const rest: string[] = [];
+  for (const term of input.split(/\s+/u)) {
+    const bare = term.replaceAll('"', "");
+    if (isChannelId(bare)) {
+      if (!channelIds.includes(bare)) channelIds.push(bare);
+    } else if (term !== "") {
+      rest.push(term);
+    }
+  }
+  return { channelIds, text: rest.join(" ") };
 }
 
 /** bm25 column weights: id (unindexed), title, description, channel title, tags. */
@@ -224,10 +252,13 @@ function toVideoRow(row: VideoDbRow, thumbs: Map<string, string>): VideoRow {
   };
 }
 
-function buildWhere(query: VideosListQuery, fts: string | null): Where {
+function buildWhere(query: VideosListQuery, fts: string | null, channelIds: string[]): Where {
   const where = new Where();
   if (fts !== null) {
     where.add("videos_fts MATCH ?", fts);
+  }
+  if (channelIds.length > 0) {
+    where.add(`v.channel_id IN (${placeholders(channelIds.length)})`, ...channelIds);
   }
   if (query.source !== undefined || query.account_id !== undefined) {
     const clauses = ["s.video_id = v.id"];
@@ -265,8 +296,9 @@ function buildWhere(query: VideosListQuery, fts: string | null): Where {
 
 /** The Videos page datatable. */
 export function listVideos(db: Db, query: VideosListQuery): Paged<VideoRow> {
-  const fts = query.q === undefined ? null : buildFtsQuery(query.q);
-  const where = buildWhere(query, fts);
+  const terms = splitSearchTerms(query.q ?? "");
+  const fts = buildFtsQuery(terms.text);
+  const where = buildWhere(query, fts, terms.channelIds);
   const dir = query.dir === "asc" ? "ASC" : "DESC";
   const orderBy =
     fts !== null && query.sort === undefined

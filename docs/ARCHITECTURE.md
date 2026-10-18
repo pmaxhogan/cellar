@@ -1792,7 +1792,7 @@ Details never carry credentials (proxies are named by label only). Checks:
 | POST | `/api/accounts/:id/cookies` | admin | `{ cookies }`: upload/paste a cookies.txt (validated, then encrypted); answers `{ account, validation }` |
 | GET | `/api/oauth/google/start?account=` | admin | 302 to Google's consent screen for an account |
 | GET | `/api/oauth/google/callback` | admin | OAuth redirect target (`PUBLIC_ORIGIN` + this path); always a 302 to `/accounts?linked=<id>` or `/accounts?error=<code>` |
-| GET | `/api/channels` | admin | paged channels: `q`, `kind` (`subscription` \| `manual`), `limit` (alias of `perPage`) |
+| GET | `/api/channels` | admin | paged channels: `q` (title or handle substring, or id prefix), `kind` (`subscription` \| `manual`), `limit` (alias of `perPage`) |
 | POST | `/api/channels` | admin | `{ ref }`: add a manual channel by URL / handle / id; 201 new, 200 already tracked |
 | DELETE | `/api/channels/:id` | admin | stop following a manual channel; 204 (409 when only an account subscription holds it) |
 | GET | `/api/videos` | admin | paged list: sort/filter/`q` (FTS)/source/account/status/location/date range (see "Videos API") |
@@ -1881,7 +1881,11 @@ the catalog columns, the `sources` it came from, `downloaded`, `media_size_bytes
 `reclaim_priority` and `include` (null until evaluated) and `thumbnail_url`, a
 content-addressed `/api/videos/:id/thumbnail/<variant>?sha=<hash>` route.
 
-`q` is turned into a safe FTS5 query: split on whitespace, drop bare `AND` / `OR` /
+`q` first has every whole channel id (`UC` plus 22 characters, double quotes ignored)
+pulled out of it: those become a `v.channel_id IN (...)` filter (several ids are
+alternatives), since channel ids are not FTS columns and `unicode61` would split one on
+`-` and `_`. A `q` that is only channel ids lists those channels in the default sort.
+The rest of `q` is turned into a safe FTS5 query: split on whitespace, drop bare `AND` / `OR` /
 `NOT` / `NEAR`, strip double quotes, drop terms without a letter or digit, quote every
 term, prefix-match the last one, AND the terms together. If nothing searchable is left
 the search is ignored. With `q` and no explicit `sort`, rows are ranked by
@@ -2123,7 +2127,7 @@ compose file adds `TMPDIR=/run/ytdlp` (see "Deployment").
 
 | Page | Contents |
 | --- | --- |
-| Videos | server-side datatable, FTS search, filters (source, account, status, location, date range), bulk select, trash icon, bulk download |
+| Videos | server-side datatable, FTS search (also matches a pasted channel id), filters (source, account, channel by title or id, status, location, date range), bulk select, trash icon, bulk download |
 | Video detail | player (`<video>` with `<track>` captions and a speed menu), metadata, history timeline, stats chart, media files, share links, per-video overrides |
 | Inspect | paste any identifier -> normalised id -> matched rules in priority order -> effective settings with per-key provenance -> edit per-video overrides |
 | Rules | reorderable list (drag and drop) + builder + live preview; the editor is a full-screen Drawer, opened from the list or directly at `/rules?edit=<id>` (the Inspect page links matched rules that way) |
@@ -2377,7 +2381,7 @@ spec's recommendation, because no code settles it.
 | 3 | Whether `read_only: true` rootfs coexists with the nvidia runtime | DECIDED. Kept: it coexists (verified on the NAS). Because the yt-dlp onefile build must unpack into an executable directory, the layout is `/tmp` (noexec) plus a dedicated exec tmpfs `/run/ytdlp` with `TMPDIR=/run/ytdlp`. |
 | 4 | `midclt call app.create` payload shape for a custom compose app on TrueNAS 25.10 | DECIDED. `custom_app: true` with `custom_compose_config_string` (the compose file as a string), recorded in `deploy/README.md`; the UI paste remains the documented fallback. |
 | 5 | Rate limiter for `/s` | DECIDED. `@fastify/rate-limit`, 120 requests per minute per IP in memory, keyed on `CF-Connecting-IP` (request IP as the fallback); over the limit is 429 `rate_limited`. |
-| 6 | FTS query parsing | DECIDED (`domain/videos.ts`, `buildFtsQuery`): split on whitespace, drop bare `AND` / `OR` / `NOT` / `NEAR`, strip double quotes, drop terms without a letter or digit, quote every term, prefix match on the last term, AND them. Ranked by `bm25(videos_fts, 0, 10, 1, 4, 2)` (title 10, description 1, channel title 4, tags 2). `videos_fts` is contentless FTS5 with the `unicode61` tokenizer. |
+| 6 | FTS query parsing | DECIDED (`domain/videos.ts`, `splitSearchTerms` then `buildFtsQuery`): whole channel ids become a `channel_id IN` filter; for the rest split on whitespace, drop bare `AND` / `OR` / `NOT` / `NEAR`, strip double quotes, drop terms without a letter or digit, quote every term, prefix match on the last term, AND them. Ranked by `bm25(videos_fts, 0, 10, 1, 4, 2)` (title 10, description 1, channel title 4, tags 2). `videos_fts` is contentless FTS5 with the `unicode61` tokenizer. |
 | 7 | Takeout history entries without `titleUrl` (ads, removed videos) and archive formats | DECIDED. Entries are read from `titleUrl`; ads and entries without a usable URL are skipped and counted per reason (`shared/src/takeout.ts`), and the Activity row reports the counts. The importer accepts `.zip`, `.tgz` / `.tar.gz` and loose files (`domain/takeout.ts`). |
 | 8 | Thumbnail variants to fetch | DECIDED: `--write-all-thumbnails`, each file mapped back to its variant through the info dict and filtered by the `thumbnails.variants` setting (default: those six); hashed, stored on change only as `<variant>-<sha>.<ext>` keeping the real extension (YouTube also serves WebP). |
 | 9 | Default `cq`/`preset` for hevc_nvenc and `crf`/`preset` for SVT-AV1 | DECIDED: hevc_nvenc `cq 28` / `p5` (the effect defaults); SVT-AV1 `crf 35` / preset 8 when it runs as the fallback for a missing NVENC encoder, the rule's quality and numeric preset when `av1_svt` is chosen explicitly. |

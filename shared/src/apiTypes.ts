@@ -606,7 +606,10 @@ export const VideosListQuerySchema = z.object({
   /** Omitted with `q` set: rank by relevance (bm25). Omitted without `q`: upload_date. */
   sort: VideoSortSchema.optional(),
   dir: z.enum(["asc", "desc"]).default("desc"),
-  /** Full text search over title, description, channel title and tags. */
+  /**
+   * Full text search over title, description, channel title and tags. A whole
+   * channel id (`UC` plus 22 characters) in it filters to that channel instead.
+   */
   q: z.string().max(500).optional(),
   source: queryList(SourceKindSchema),
   account_id: z.coerce.number().int().positive().optional(),

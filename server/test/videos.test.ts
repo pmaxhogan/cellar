@@ -16,6 +16,7 @@ import {
   ensureVideo,
   getVideo,
   listVideos,
+  splitSearchTerms,
   statsFromChanges,
   upsertVideoFromApi,
   videoHistory,
@@ -207,6 +208,25 @@ describe("buildFtsQuery", () => {
 
   it("keeps unicode terms", () => {
     expect(buildFtsQuery(TOKYO)).toBe(`"${TOKYO}"*`);
+  });
+});
+
+describe("splitSearchTerms", () => {
+  const UC = "UCxyz0123456789abcdefghi";
+
+  it("pulls whole channel ids out of the text, once each", () => {
+    expect(splitSearchTerms(`gravity ${UC}  "${UC}" waves`)).toEqual({
+      channelIds: [UC],
+      text: "gravity waves",
+    });
+    expect(splitSearchTerms("  ")).toEqual({ channelIds: [], text: "" });
+  });
+
+  it("leaves partial or malformed ids to full text search", () => {
+    expect(splitSearchTerms("UCxyz UCxyz0123456789abcdefghij")).toEqual({
+      channelIds: [],
+      text: "UCxyz UCxyz0123456789abcdefghij",
+    });
   });
 });
 
@@ -407,6 +427,40 @@ describe("listVideos", () => {
   it("combines search with filters", () => {
     expect(ids({ q: "gravity", status: "unlisted" })).toEqual([vid("b")]);
     expect(ids({ q: "gravity", downloaded: "true", source: "liked" })).toEqual([vid("a")]);
+  });
+
+  it("matches a channel id typed into the search box", () => {
+    const UC = "UCxyz0123456789abcdefghi";
+    const OTHER = "UCzzz0123456789abcdefghi";
+    seedChannel(db, UC, "Minute Physics");
+    seedChannel(db, OTHER, "Other");
+    seedVideo(db, {
+      id: vid("f"),
+      channel_id: UC,
+      title: "Gravity explained",
+      upload_date: T0 + 6 * DAY,
+    });
+    seedVideo(db, {
+      id: vid("g"),
+      channel_id: UC,
+      title: "Light speed",
+      upload_date: T0 + 7 * DAY,
+    });
+    seedVideo(db, { id: vid("h"), channel_id: OTHER, title: "Gravity", upload_date: T0 + 9 * DAY });
+    // A bare id lists the channel in the default upload_date order (no bm25).
+    expect(ids({ q: UC })).toEqual([vid("g"), vid("f")]);
+    expect(ids({ q: ` "${UC}" `, dir: "asc" })).toEqual([vid("f"), vid("g")]);
+    // With words, the id narrows the full text search.
+    expect(ids({ q: `gravity ${UC}` })).toEqual([vid("f")]);
+    expect(ids({ q: `${UC} light` })).toEqual([vid("g")]);
+    // Several ids are alternatives.
+    expect(ids({ q: `${UC} ${OTHER} gravity` }).sort()).toEqual([vid("f"), vid("h")].sort());
+    // It composes with the channel_id filter and other filters.
+    expect(ids({ q: UC, channel_id: UC })).toEqual([vid("g"), vid("f")]);
+    expect(ids({ q: UC, channel_id: OTHER })).toEqual([]);
+    expect(ids({ q: UC, min_duration: "1" })).toEqual([]);
+    // An id nothing belongs to matches nothing.
+    expect(list({ q: "UCnobody0123456789abcdef" }).total).toBe(0);
   });
 });
 
