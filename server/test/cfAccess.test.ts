@@ -56,7 +56,7 @@ function parseRegisteredRoutes(printed: string): RegisteredRoute[] {
 
   for (const line of printed.split("\n")) {
     // Tree glyphs as escapes: the repo is ASCII only.
-    const match = /^(.*?)(?:[├└]── )(\S+)\s+\(([^)]+)\)\s*$/.exec(line);
+    const match = /^(.*?)(?:[\u251c\u2514]\u2500\u2500 )(\S+)\s+\(([^)]+)\)\s*$/.exec(line);
     const prefix = match?.[1];
     const segment = match?.[2];
     const rawMethods = match?.[3];

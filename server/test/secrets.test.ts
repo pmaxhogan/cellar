@@ -26,7 +26,7 @@ describe("encryptSecret / decryptSecret", () => {
 
   it("round trips an empty string and multibyte text", () => {
     expect(decryptSecret(KEY, encryptSecret(KEY, ""))).toBe("");
-    const unicode = "pa55w0rd-éü中文";
+    const unicode = "pa55w0rd-\u00e9\u00fc\u4e2d\u6587";
     expect(decryptSecret(KEY, encryptSecret(KEY, unicode))).toBe(unicode);
   });
 
