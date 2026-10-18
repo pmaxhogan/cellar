@@ -2,6 +2,7 @@ import { buildApp, INSECURE_BANNER } from "./app.ts";
 import { ConfigError, ensureDataDirs, loadConfig } from "./config.ts";
 import { openDb } from "./db/db.ts";
 import { ensureInstalledAt } from "./db/kv.ts";
+import { getSettings } from "./domain/settings.ts";
 import { createSystemDeps, startSystemSchedules } from "./domain/systemDeps.ts";
 import { migrate } from "./db/migrate.ts";
 import { EventBus } from "./events.ts";
@@ -39,7 +40,7 @@ async function main(): Promise<void> {
 
   // --- wave1B scheduler boot ---
   // Starts now; app.close() (the SIGTERM/SIGINT shutdown below) awaits its graceful stop.
-  bootScheduler(app, { config, db, log, events });
+  bootScheduler(app, { config, db, log, events, getSettings: () => getSettings(db, config) });
   // --- end wave1B scheduler boot ---
 
   const reminder = config.insecureMode
@@ -84,7 +85,7 @@ async function main(): Promise<void> {
 
   // --- wave1C boot ---
   // Boot self-check, periodic self-check and the daily tool update check (all unref'ed).
-  startSystemSchedules(createSystemDeps({ config, log: log.child({ mod: "system" }), db }));
+  startSystemSchedules(createSystemDeps({ config, log: log.child({ mod: "system" }), db, events }));
   // --- end wave1C boot ---
 }
 

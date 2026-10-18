@@ -15,7 +15,14 @@ import {
   startToolUpdateSchedule,
   type ToolUpdateDeps,
 } from "../media/tools.ts";
+import { runTool as execRunTool } from "../media/exec.ts";
+import { checkAccountApi, checkAccountCookies, listAccounts } from "./accounts.ts";
+import { listLocations } from "./locations.ts";
+import { notify } from "./notifications.ts";
+import { listProxiesDecrypted } from "./proxies.ts";
 import { startSelfCheckSchedule, type LocationInfo, type SelfCheckDeps } from "./selfcheck.ts";
+import { getSettings } from "./settings.ts";
+import type { EventBus } from "../events.ts";
 
 /**
  * Everything the self-check, the tool updater and their routes need, in one
@@ -75,35 +82,68 @@ export function listLocationsFallback(db: Db): LocationInfo[] {
     }));
 }
 
-export function createSystemDeps(input: { config: Config; log: Logger; db: Db }): SystemDeps {
-  const { config, log, db } = input;
+export function createSystemDeps(input: {
+  config: Config;
+  log: Logger;
+  db: Db;
+  events?: EventBus;
+}): SystemDeps {
+  const { config, log, db, events } = input;
+  const service = { config, db, log };
   return {
     db,
     log,
     config,
-    // FALLBACK: media/exec.ts runTool.
-    runTool: createRunTool({ binDir: config.binDir }),
+    // Adapter: the self-check's RunTool treats a timeout as code null, while
+    // media/exec.ts reports -1 plus timedOut.
+    runTool: async (request) => {
+      const result = await execRunTool(service, {
+        tool: request.tool,
+        args: request.args,
+        timeoutMs: request.timeoutMs ?? 60_000,
+      });
+      return {
+        code: result.timedOut ? null : result.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      };
+    },
     runFile,
     fetch: (resource, init) => fetch(resource, init),
-    // FALLBACK: domain/locations.ts.
-    listLocations: () => listLocationsFallback(db),
-    // FALLBACK: domain/accounts.ts. Without it no account is checked.
+    listLocations: () =>
+      listLocations(db).map((row) => ({
+        id: row.id,
+        label: row.label,
+        container_path: row.container_path,
+        quota_bytes: row.quota_bytes,
+        enabled: row.enabled,
+        used_bytes: row.used_bytes,
+      })),
     accounts: {
-      list: () => [],
-      checkApi: () => Promise.resolve({ ok: false, detail: "Account checks are not wired yet." }),
-      checkCookies: () =>
-        Promise.resolve({ ok: false, detail: "Account checks are not wired yet." }),
+      list: () => listAccounts(db).map((row) => ({ id: row.id, label: row.label })),
+      checkApi: (id) => checkAccountApi(service, id),
+      checkCookies: (id) => checkAccountCookies(service, id),
     },
-    // FALLBACK: domain/proxies.ts (needs decryption). Without it no proxy is checked.
-    proxies: { listDecrypted: () => [] },
-    // FALLBACK: domain/settings.ts.
-    getSettings: () => readSettingsFallback(db, log),
-    // FALLBACK: domain/notifications.ts.
+    proxies: { listDecrypted: () => listProxiesDecrypted(service) },
+    getSettings: () => getSettings(db, config),
     notify: (type, title, body) => {
-      log.warn({ type, title, body }, "notification (no notifier wired)");
+      void notify(
+        { db, log, events, getSettings: () => getSettings(db, config) },
+        {
+          type,
+          title,
+          body,
+        },
+      ).catch((error: unknown) => {
+        log.warn({ err: error, type }, "self-check notification failed");
+      });
     },
   };
 }
+
+// The read-only fallbacks above stay exported for tests and for an API-only
+// boot where the full service modules are not wanted.
+void createRunTool;
 
 /**
  * Boot-time wiring: record the baseline versions, run the boot self-check,

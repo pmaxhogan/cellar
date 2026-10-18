@@ -117,11 +117,15 @@ interface ChannelsListResponse {
   items?: ApiChannel[];
 }
 
-/** Any account whose status is ok and that holds a Google grant, freshest first. */
+/**
+ * Any account that holds a Google grant and is not known to be broken or
+ * disabled, freshest first. A freshly linked account without a cookie jar is
+ * still `pending`, and its API access is what a handle lookup needs.
+ */
 function apiAccount(db: Db): number | null {
   const row = db.get<{ id: number }>(
     `SELECT a.id FROM accounts a
-     WHERE a.status = 'ok' AND EXISTS (SELECT 1 FROM account_secrets s
+     WHERE a.status NOT IN ('auth_lost', 'disabled') AND EXISTS (SELECT 1 FROM account_secrets s
                                        WHERE s.account_id = a.id AND s.kind = 'oauth_refresh')
      ORDER BY a.last_api_ok_at DESC, a.id LIMIT 1`,
   );

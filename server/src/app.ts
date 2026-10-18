@@ -5,6 +5,7 @@ import type { Config } from "./config.ts";
 import type { Db } from "./db/db.ts";
 import { EventBus } from "./events.ts";
 import { sharePlugin, type ShareRateLimit } from "./public/share.ts";
+import { getSettings } from "./domain/settings.ts";
 import { apiRoutes } from "./routes/index.ts";
 import { systemRoutes } from "./routes/system.ts";
 import { wave1AOptions, wave1ARoutes } from "./routes/wave1a.ts";
@@ -107,7 +108,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
 
   await app.register(apiRoutes, { prefix: "/api" });
   // --- wave1B routes ---
-  await app.register(wave1bRoutes, { prefix: "/api" });
+  await app.register(wave1bRoutes, {
+    prefix: "/api",
+    getSettings: () => getSettings(ctx.db, ctx.config),
+  });
   // --- end wave1B routes ---
   // --- wave1C routes ---
   await app.register(systemRoutes, { prefix: "/api" });
