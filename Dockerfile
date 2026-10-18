@@ -61,14 +61,20 @@ RUN set -eux; \
 RUN set -eux; \
   mkdir -p /tmp/ffmpeg; \
   cd /tmp/ffmpeg; \
-  base="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"; \
-  name="ffmpeg-master-latest-linux64-gpl.tar.xz"; \
+  # Pinned: builds from mid-2026 on are linked against NVENC API 13.1, which
+  # needs driver 610+. This tag is the newest one verified to encode with a
+  # 580-series driver (API 13.0). The in-app updater follows the same pin via
+  # the tools.ffmpeg_release_tag setting.
+  tag="autobuild-2025-12-31-14-28"; \
+  base="https://github.com/BtbN/FFmpeg-Builds/releases/download/$tag"; \
+  name="ffmpeg-N-122306-geea648ef1d-linux64-gpl.tar.xz"; \
+  dir="${name%.tar.xz}"; \
   curl -fsSL --retry 3 -o "$name" "$base/$name"; \
   curl -fsSL --retry 3 -o checksums.sha256 "$base/checksums.sha256"; \
   grep -E "  $name\$" checksums.sha256 | sha256sum -c -; \
   tar -xJf "$name" --strip-components=2 -C /opt/cellar/bin \
-    "ffmpeg-master-latest-linux64-gpl/bin/ffmpeg" \
-    "ffmpeg-master-latest-linux64-gpl/bin/ffprobe"; \
+    "$dir/bin/ffmpeg" \
+    "$dir/bin/ffprobe"; \
   chmod 0755 /opt/cellar/bin/ffmpeg /opt/cellar/bin/ffprobe; \
   rm -rf /tmp/ffmpeg
 
