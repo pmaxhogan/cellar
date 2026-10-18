@@ -329,6 +329,10 @@ export async function runEvalPass(
       if (result.before?.location_id != null) locations.add(result.before.location_id);
       if (result.after?.location_id != null) locations.add(result.after.location_id);
     }
+    // Newly included or re-prioritised videos may now be downloadable.
+    if (changed.length > 0 && deps.registry.has("download_scan")) {
+      deps.enqueue({ type: "download_scan", payload: {}, dedupe: true });
+    }
     if (locations.size > 0) {
       if (deps.registry.has(REAP_JOB)) {
         for (const locationId of [...locations].sort((a, b) => a - b)) {

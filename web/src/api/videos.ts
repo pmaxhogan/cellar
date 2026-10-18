@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   BulkDownloadEstimateSchema,
   MAX_BULK_IDS,
@@ -14,7 +13,6 @@ import {
   VideoJobResponseSchema,
   VideosListResponseSchema,
   VideoStatsResponseSchema,
-  pagedSchema,
   type BulkDownloadEstimate,
   type BulkKind,
   type SourceKind,

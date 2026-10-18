@@ -27,12 +27,12 @@ afterEach(() => {
 });
 
 describe("bootPipeline", () => {
-  it("registers every handler once and the two schedules", () => {
+  it("registers every handler once and the three schedules", () => {
     bootPipeline(h.deps);
     bootPipeline(h.deps);
     expect(h.registry.classOf("download")).toBe("download");
     expect(h.registry.classOf("transcode")).toBe("transcode");
-    for (const type of ["move", "reap", "action:reap-now", "canary"]) {
+    for (const type of ["move", "reap", "action:reap-now", "canary", "download_scan"]) {
       expect(h.registry.classOf(type)).toBe("maintenance");
     }
     expect(h.registry.get("download")?.maxAttempts).toBe(5);
@@ -40,8 +40,10 @@ describe("bootPipeline", () => {
     expect(h.registry.get("reap")?.dedupeKey?.({})).toBe("all");
     expect(h.schedules.map((s) => [s.name, s.intervalMs])).toEqual([
       ["reap_hourly", 3_600_000],
+      ["download_scan", 300_000],
       ["move_scan", 600_000],
       ["reap_hourly", 3_600_000],
+      ["download_scan", 300_000],
       ["move_scan", 600_000],
     ]);
   });
@@ -62,7 +64,7 @@ describe("bootPipeline", () => {
 
   it("schedules reaps and moves", () => {
     bootPipeline(h.deps);
-    const [reap, move] = h.schedules;
+    const [reap, , move] = h.schedules;
     reap?.fn();
     reap?.fn();
     expect(h.db.all("SELECT id FROM jobs WHERE type = 'reap'")).toHaveLength(1);

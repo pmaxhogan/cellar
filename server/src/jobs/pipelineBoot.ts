@@ -8,6 +8,11 @@ import {
 import { REAP_JOB, REAP_NOW_ACTION } from "../domain/reaper.ts";
 import { runCanaryJob } from "./handlers/canary.ts";
 import {
+  DOWNLOAD_SCAN_INTERVAL_MS,
+  DOWNLOAD_SCAN_JOB,
+  runDownloadScan,
+} from "./handlers/downloadScan.ts";
+import {
   DOWNLOAD_JOB,
   pickDownloadAccount,
   runDownload,
@@ -71,8 +76,22 @@ export function bootPipeline(deps: PipelineDeps): void {
     dedupeKey: () => CANARY_JOB,
   });
 
+  register(DOWNLOAD_SCAN_JOB, {
+    class: "maintenance",
+    maxAttempts: 1,
+    handler: (ctx) => {
+      runDownloadScan(deps, ctx);
+      return Promise.resolve();
+    },
+    dedupeKey: () => DOWNLOAD_SCAN_JOB,
+  });
+
   deps.every(REAP_HOURLY_SCHEDULE, REAP_INTERVAL_MS, () =>
     deps.enqueue({ type: REAP_JOB, payload: {}, dedupe: true }),
+  );
+  // Queue downloads for everything the rules keep that is not on disk yet.
+  deps.every(DOWNLOAD_SCAN_JOB, DOWNLOAD_SCAN_INTERVAL_MS, () =>
+    deps.enqueue({ type: DOWNLOAD_SCAN_JOB, payload: {}, dedupe: true }),
   );
   deps.every(MOVE_SCAN_SCHEDULE, MOVE_SCAN_INTERVAL_MS, () => {
     const queued = scheduleMovesForChangedLocations(deps);

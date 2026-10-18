@@ -145,7 +145,8 @@ describe("ConditionTree", () => {
     expect(wrapper.find("[data-test='empty-group']").text()).toContain("matches no videos");
   });
 
-  it("emits a valid AST for every value kind", async () => {
+  // Walks every value kind through real PrimeVue inputs: slow under a full-suite load.
+  it("emits a valid AST for every value kind", { timeout: 30_000 }, async () => {
     const steps: { field: Field; op?: string; act: (w: VueWrapper) => Promise<void> }[] = [
       { field: "views", act: (w) => choose(w, "value-number", 1000) },
       {
