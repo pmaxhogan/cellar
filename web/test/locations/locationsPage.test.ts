@@ -279,6 +279,23 @@ describe("LocationsPage", () => {
     );
   });
 
+  it("leaves an untouched odd quota alone on edit", async () => {
+    const server = fakeServer({
+      "GET /api/locations": () => ({ rows: [location({ quota_bytes: 1_000_000_000 })] }),
+      "PUT /api/locations/1": () => location({ quota_bytes: 1_000_000_000 }),
+    });
+    const wrapper = await mountPage(server);
+    await card(wrapper, 1).find("[data-action='edit']").trigger("click");
+    await flush();
+    expect(wrapper.findComponent(InputNumber).props("modelValue")).toBe(0.93);
+    await dialogButton(wrapper, "Save").trigger("click");
+    await flush();
+    expect(server.callsTo("PUT /api/locations/1")[0]!.body).toEqual({
+      label: "Main",
+      enabled: true,
+    });
+  });
+
   it("shows a save failure in the dialog", async () => {
     const server = fakeServer({
       "GET /api/locations": () => ({ rows: [location()] }),

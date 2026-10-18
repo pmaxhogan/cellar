@@ -88,11 +88,10 @@ async function submit(): Promise<void> {
       };
       emit("saved", await createLocation(api, draft), "created");
     } else {
-      const patch: Partial<LocationDraft> = {
-        label: label.value.trim(),
-        quota_bytes,
-        enabled: enabled.value,
-      };
+      const patch: Partial<LocationDraft> = { label: label.value.trim(), enabled: enabled.value };
+      // The field shows GB to two decimals; only a changed number is sent, so
+      // saving an untouched quota that is not a round GB does not rewrite it.
+      if (quotaGb.value !== bytesToGb(props.location.quota_bytes)) patch.quota_bytes = quota_bytes;
       emit("saved", await updateLocation(api, props.location.id, patch), "updated");
     }
     emit("update:visible", false);
