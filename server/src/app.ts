@@ -12,6 +12,7 @@ import { wave1AOptions, wave1ARoutes } from "./routes/wave1a.ts";
 import { toApiError } from "./routes/validate.ts";
 import { wave1bRoutes } from "./routes/wave1b.ts"; // wave1B
 import { wave2bRoutes } from "./routes/wave2b.ts"; // wave2B
+import { videoRoutes } from "./routes/videos.ts"; // wave2C
 import { cfAccessPlugin, type CfAccessKeyGetter } from "./security/cfAccess.ts";
 import { APP_VERSION } from "./version.ts";
 import { webPlugin } from "./web.ts";
@@ -123,6 +124,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
   // --- wave2B routes ---
   await app.register(wave2bRoutes, { prefix: "/api" });
   // --- end wave2B routes ---
+  // --- wave2C routes ---
+  // trashVideos (rules domain) and the download/recheck handlers are wired in at merge.
+  await app.register(videoRoutes, { prefix: "/api" });
+  // --- end wave2C routes ---
   await app.register(sharePlugin, {
     prefix: "/s",
     config: ctx.config,

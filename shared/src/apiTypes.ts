@@ -484,3 +484,340 @@ export type ToolUpdateRequest = z.infer<typeof ToolUpdateRequestSchema>;
 
 export const ToolRollbackRequestSchema = z.object({ tool: UpdatableToolSchema });
 export type ToolRollbackRequest = z.infer<typeof ToolRollbackRequestSchema>;
+
+// --- wave2C ---
+// Videos (server/src/domain/videos.ts, videoFiles.ts, bulk.ts; routes/videos.ts).
+//   GET  /api/videos?VideosListQuery                 -> VideosListResponse
+//   GET  /api/videos/:id                             -> VideoDetail
+//   GET  /api/videos/:id/history?page&perPage&field  -> VideoHistoryResponse
+//   GET  /api/videos/:id/stats?from&to               -> VideoStatsResponse
+//   GET  /api/videos/:id/media/:mediaId[?download=1] -> the file (HTTP Range, HEAD)
+//   GET  /api/videos/:id/captions/:lang              -> text/vtt
+//   GET  /api/videos/:id/thumbnail/:variant[?sha=]   -> image/jpeg ("best" = fallback chain)
+//   GET  /api/videos/:id/metadata.json               -> the stored info.json, else VideoDetail
+//   POST /api/videos/:id/download-now                -> 202 VideoJobResponse | 501 not_implemented
+//   POST /api/videos/:id/recheck                     -> 202 VideoJobResponse | 501 not_implemented
+//   POST /api/videos/trash                  <- TrashRequest -> 202 TrashResponse | 501
+//   POST /api/videos/bulk-download/estimate <- BulkDownloadEstimateRequest -> BulkDownloadEstimate
+//   POST /api/videos/bulk-download          <- BulkDownloadRequest (JSON or form) -> application/zip
+// Query lists (`source`, `status`, `type`) accept `a=x&a=y` or `a=x,y`. Dates accept epoch ms
+// or YYYY-MM-DD (UTC; a bare `date_to` / `to` covers that whole day).
+// ---------------------------------------------------------------------------
+import { SourceKindSchema, STATUS_VALUES, VideoTypeSchema } from "./rules/ast.ts";
+
+export const VIDEO_SORT_KEYS = [
+  "upload_date",
+  "first_seen",
+  "title",
+  "views",
+  "likes",
+  "duration_s",
+  "size",
+  "reclaim_priority",
+  "last_recheck",
+] as const;
+export const VideoSortSchema = z.enum(VIDEO_SORT_KEYS);
+export type VideoSort = z.infer<typeof VideoSortSchema>;
+
+export const VIDEO_PER_PAGE = [25, 50, 100, 200] as const;
+export const VIDEO_PRI_FILTERS = ["-1", "0", "positive"] as const;
+export const BULK_KINDS = ["video", "audio", "captions", "all"] as const;
+export const BulkKindSchema = z.enum(BULK_KINDS);
+export type BulkKind = z.infer<typeof BulkKindSchema>;
+
+/** Most ids one trash or bulk-download request may carry. */
+export const MAX_BULK_IDS = 10_000;
+
+const VideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/, "Not a video id.");
+
+/** `a=x&a=y`, `a=x,y` and `a=x` all read as a list; empty items are dropped. */
+function queryList<T extends z.ZodTypeAny>(item: T) {
+  return z.preprocess((value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+    const parts = (Array.isArray(value) ? value : [value])
+      .flatMap((part) => String(part).split(","))
+      .map((part) => part.trim())
+      .filter((part) => part !== "");
+    return parts.length === 0 ? undefined : parts;
+  }, z.array(item).max(50).optional());
+}
+
+const queryBool = z
+  .enum(["true", "false", "1", "0"])
+  .transform((value) => value === "true" || value === "1")
+  .optional();
+
+const DAY_MS = 86_400_000;
+
+/** Epoch ms, or a YYYY-MM-DD date (UTC). `endOfDay` moves a bare date to its last ms. */
+function queryInstant(endOfDay: boolean) {
+  return z.preprocess((value) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+    const text = value.trim();
+    if (/^-?\d+$/.test(text)) {
+      return Number(text);
+    }
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(text) ? Date.parse(`${text}T00:00:00Z`) : NaN;
+    if (Number.isNaN(start)) {
+      return value;
+    }
+    return endOfDay ? start + DAY_MS - 1 : start;
+  }, z.number().int().optional());
+}
+
+export const VideosListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  perPage: z.coerce
+    .number()
+    .int()
+    .refine((value) => (VIDEO_PER_PAGE as readonly number[]).includes(value), {
+      message: "perPage must be 25, 50, 100 or 200.",
+    })
+    .default(50),
+  /** Omitted with `q` set: rank by relevance (bm25). Omitted without `q`: upload_date. */
+  sort: VideoSortSchema.optional(),
+  dir: z.enum(["asc", "desc"]).default("desc"),
+  /** Full text search over title, description, channel title and tags. */
+  q: z.string().max(500).optional(),
+  source: queryList(SourceKindSchema),
+  account_id: z.coerce.number().int().positive().optional(),
+  channel_id: z.string().min(1).max(64).optional(),
+  status: queryList(z.enum(STATUS_VALUES)),
+  downloaded: queryBool,
+  location_id: z.coerce.number().int().positive().optional(),
+  type: queryList(VideoTypeSchema),
+  /** upload_date bounds, inclusive. */
+  date_from: queryInstant(false),
+  date_to: queryInstant(true),
+  /** duration_s bounds in seconds, inclusive. */
+  min_duration: z.coerce.number().int().nonnegative().optional(),
+  max_duration: z.coerce.number().int().nonnegative().optional(),
+  /** Effective reclaim priority: -1 (keep forever), 0 (trashed) or positive. */
+  pri: z.enum(VIDEO_PRI_FILTERS).optional(),
+});
+export type VideosListQuery = z.infer<typeof VideosListQuerySchema>;
+export type VideosListQueryInput = z.input<typeof VideosListQuerySchema>;
+
+export const VideoSourceRefSchema = z.object({
+  account_id: z.number().int().nullable(),
+  source: z.string(),
+  first_seen_at: z.number().int(),
+});
+export type VideoSourceRef = z.infer<typeof VideoSourceRefSchema>;
+
+export const VideoRowSchema = z.object({
+  id: z.string(),
+  channel_id: z.string().nullable(),
+  channel_title: z.string().nullable(),
+  title: z.string().nullable(),
+  upload_date: z.number().int().nullable(),
+  published_at: z.number().int().nullable(),
+  duration_s: z.number().int().nullable(),
+  /** video | short | livestream | premiere. Free text so a new value never breaks a client. */
+  type: z.string().nullable(),
+  /** public | unlisted | private | removed | unavailable. */
+  privacy: z.string().nullable(),
+  gone_since: z.number().int().nullable(),
+  views: z.number().int().nullable(),
+  likes: z.number().int().nullable(),
+  comments: z.number().int().nullable(),
+  /** Estimated (Return YouTube Dislike). */
+  ryd_ratio: z.number().nullable(),
+  caption_available: z.boolean().nullable(),
+  max_height: z.number().int().nullable(),
+  has_av1: z.boolean().nullable(),
+  sources: z.array(VideoSourceRefSchema),
+  /** True when a current video or audio file exists. */
+  downloaded: z.boolean(),
+  /** Bytes of the current video and audio files. */
+  media_size_bytes: z.number().int().nonnegative(),
+  /** Where the current file lives, else where the rules want it (video_effective). */
+  location_id: z.number().int().nullable(),
+  /** From video_effective; null until the video has been evaluated. */
+  reclaim_priority: z.number().int().nullable(),
+  include: z.boolean().nullable(),
+  /** Server route of the best stored thumbnail (content addressed); null when none is stored. */
+  thumbnail_url: z.string().nullable(),
+  created_at: z.number().int(),
+  updated_at: z.number().int(),
+});
+export type VideoRow = z.infer<typeof VideoRowSchema>;
+export const VideosListResponseSchema = pagedSchema(VideoRowSchema);
+export type VideosListResponse = z.infer<typeof VideosListResponseSchema>;
+
+export const VideoFormatsSummarySchema = z.object({
+  max_height: z.number().int().nullable(),
+  max_fps: z.number().nullable(),
+  has_av1: z.boolean().nullable(),
+  has_vp9: z.boolean().nullable(),
+  has_h264: z.boolean().nullable(),
+  is_hdr: z.boolean().nullable(),
+});
+export type VideoFormatsSummary = z.infer<typeof VideoFormatsSummarySchema>;
+
+export const MEDIA_KINDS = ["video", "audio", "captions", "info"] as const;
+export const MediaKindSchema = z.enum(MEDIA_KINDS);
+export type MediaKind = z.infer<typeof MediaKindSchema>;
+
+export const MediaRowSchema = z.object({
+  id: z.number().int(),
+  kind: MediaKindSchema,
+  version: z.number().int(),
+  is_current: z.boolean(),
+  location_id: z.number().int().nullable(),
+  rel_path: z.string(),
+  size_bytes: z.number().int().nonnegative(),
+  vcodec: z.string().nullable(),
+  acodec: z.string().nullable(),
+  height: z.number().int().nullable(),
+  fps: z.number().nullable(),
+  bitrate: z.number().int().nullable(),
+  lang: z.string().nullable(),
+  downloaded_at: z.number().int().nullable(),
+  transcoded_from: z.string().nullable(),
+});
+export type MediaRow = z.infer<typeof MediaRowSchema>;
+
+export const VideoEffectiveSchema = z.object({
+  values: z.record(z.string(), z.unknown()),
+  provenance: z.record(z.string(), z.unknown()),
+  matched_rule_ids: z.array(z.number().int()),
+  evaluated_at: z.number().int(),
+  next_eval_at: z.number().int().nullable(),
+});
+export type VideoEffective = z.infer<typeof VideoEffectiveSchema>;
+
+export const VideoThumbnailSchema = z.object({
+  variant: z.string(),
+  sha256: z.string(),
+  first_seen_at: z.number().int(),
+  url: z.string(),
+});
+export type VideoThumbnail = z.infer<typeof VideoThumbnailSchema>;
+
+export const VideoShareLinkSchema = z.object({
+  token: z.string(),
+  expires_at: z.number().int().nullable(),
+  revoked_at: z.number().int().nullable(),
+  access_count: z.number().int().nonnegative(),
+  created_at: z.number().int(),
+});
+export type VideoShareLink = z.infer<typeof VideoShareLinkSchema>;
+
+export const VideoDetailSchema = VideoRowSchema.extend({
+  description: z.string().nullable(),
+  tags: z.array(z.string()),
+  category_id: z.string().nullable(),
+  default_language: z.string().nullable(),
+  formats: VideoFormatsSummarySchema,
+  live_status: z.string().nullable(),
+  last_recheck_at: z.number().int().nullable(),
+  next_recheck_at: z.number().int().nullable(),
+  recheck_tier: z.string().nullable(),
+  consecutive_recheck_failures: z.number().int().nonnegative(),
+  effective: VideoEffectiveSchema.nullable(),
+  /** The per-video (`video` kind) rule's effects; null when there is none. */
+  overrides: z.record(z.string(), z.unknown()).nullable(),
+  /** Every media row, current and older versions (by kind, newest version first). */
+  media: z.array(MediaRowSchema),
+  /** Current caption files. */
+  captions: z.array(z.object({ lang: z.string(), media_id: z.number().int() })),
+  /** Every stored thumbnail, newest first. */
+  thumbnails: z.array(VideoThumbnailSchema),
+  share_links: z.array(VideoShareLinkSchema),
+});
+export type VideoDetail = z.infer<typeof VideoDetailSchema>;
+
+export const VideoHistoryQuerySchema = z.object({
+  page: pageParam,
+  perPage: perPageParam,
+  field: z.string().min(1).max(64).optional(),
+});
+export type VideoHistoryQuery = z.infer<typeof VideoHistoryQuerySchema>;
+
+export const VideoChangeRowSchema = z.object({
+  id: z.number().int(),
+  field: z.string(),
+  old: z.unknown(),
+  new: z.unknown(),
+  seen_at: z.number().int(),
+  recheck_id: z.number().int().nullable(),
+});
+export type VideoChangeRow = z.infer<typeof VideoChangeRowSchema>;
+export const VideoHistoryResponseSchema = pagedSchema(VideoChangeRowSchema);
+export type VideoHistoryResponse = z.infer<typeof VideoHistoryResponseSchema>;
+
+export const VideoStatsQuerySchema = z.object({
+  from: queryInstant(false),
+  to: queryInstant(true),
+});
+export type VideoStatsQuery = z.infer<typeof VideoStatsQuerySchema>;
+
+export const VideoStatsPointSchema = z.object({
+  at: z.number().int(),
+  views: z.number().int().nullable(),
+  likes: z.number().int().nullable(),
+  comments: z.number().int().nullable(),
+  ryd_dislikes: z.number().int().nullable(),
+});
+export type VideoStatsPoint = z.infer<typeof VideoStatsPointSchema>;
+export const VideoStatsResponseSchema = z.object({ points: z.array(VideoStatsPointSchema) });
+export type VideoStatsResponse = z.infer<typeof VideoStatsResponseSchema>;
+
+export const VideoJobResponseSchema = z.object({
+  job_id: z.number().int(),
+  /** True when an equivalent queued or running job already existed. */
+  deduped: z.boolean(),
+});
+export type VideoJobResponse = z.infer<typeof VideoJobResponseSchema>;
+
+/** Video ids from JSON (an array) or a form post (repeated or comma separated); deduped. */
+const VideoIdListSchema = z.preprocess(
+  (value) => {
+    const items: unknown = typeof value === "string" ? [value] : value;
+    if (!Array.isArray(items)) {
+      return value;
+    }
+    return items
+      .flatMap((part: unknown) => (typeof part === "string" ? part.split(",") : [part]))
+      .map((part) => (typeof part === "string" ? part.trim() : part))
+      .filter((part) => part !== "");
+  },
+  z
+    .array(VideoIdSchema)
+    .min(1)
+    .max(MAX_BULK_IDS)
+    .transform((ids) => [...new Set(ids)]),
+);
+
+export const TrashRequestSchema = z.object({ ids: VideoIdListSchema });
+export type TrashRequest = z.infer<typeof TrashRequestSchema>;
+export const TrashResponseSchema = z.object({ count: z.number().int().nonnegative() });
+export type TrashResponse = z.infer<typeof TrashResponseSchema>;
+
+export const BulkDownloadEstimateRequestSchema = z.object({
+  ids: VideoIdListSchema,
+  kind: BulkKindSchema.default("video"),
+});
+export type BulkDownloadEstimateRequest = z.infer<typeof BulkDownloadEstimateRequestSchema>;
+
+export const BulkDownloadRequestSchema = z.object({
+  ids: VideoIdListSchema,
+  /** A filename template for shared renderFilename; defaults to DEFAULT_FILENAME_TEMPLATE. */
+  template: z.string().trim().min(1).max(500).optional(),
+  kind: BulkKindSchema.default("video"),
+});
+export type BulkDownloadRequest = z.infer<typeof BulkDownloadRequestSchema>;
+
+export const BulkDownloadEstimateSchema = z.object({
+  files: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+  /** True above the bulk.warn_gb setting. There is no hard cap. */
+  warn: z.boolean(),
+});
+export type BulkDownloadEstimate = z.infer<typeof BulkDownloadEstimateSchema>;
+// --- end wave2C ---
