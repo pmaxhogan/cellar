@@ -26,11 +26,28 @@ function loadPatterns() {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"))
-    .map((line) => new RegExp(line, "i"));
+    .map((line, index) => {
+      try {
+        return new RegExp(line, "i");
+      } catch {
+        // Never print the pattern or the engine's message: both would leak it.
+        console.error(`check-private: pattern #${index + 1} does not compile`);
+        process.exit(1);
+      }
+    });
 }
 
 const patterns = loadPatterns();
 if (patterns.length === 0) {
+  // Fail closed where the secret is expected (a push to the default branch in
+  // Actions). Pull requests from forks and Dependabot cannot read secrets, so
+  // there the check is informational and the push-to-main run is the gate.
+  const mustHavePatterns =
+    process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_EVENT_NAME === "push";
+  if (mustHavePatterns) {
+    console.error("check-private: PRIVATE_PATTERNS is not configured for this push run");
+    process.exit(1);
+  }
   console.log("check-private: no patterns configured, skipping");
   process.exit(0);
 }
