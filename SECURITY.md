@@ -88,9 +88,9 @@ authentication, and the app's own public list is the second lock behind Access's
 [`docs/setup-cloudflare.md`](docs/setup-cloudflare.md).
 
 Access matches paths case-insensitively while the app router is case-sensitive.
-`/S/nope` is therefore not a public path to the app and is not served; the observed
-result is a redirect to the Access login (`/s/nope` answers 404 from the app). Both
-layers fail closed.
+`/S/nope` passes the bypass but is not a public path to the app, which answers 401
+without serving anything (`/s/nope` answers 404 from the app). Both layers fail
+closed.
 
 ### Secrets at rest
 

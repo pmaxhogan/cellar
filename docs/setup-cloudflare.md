@@ -132,13 +132,13 @@ curl -sI https://cellar.maxhogan.dev/S/nope | head -3
 | `/healthz`   | `HTTP/2 200`                                                                                      | The tunnel reaches the container and the app's public list includes `/healthz`. |
 | `/`          | `HTTP/2 302`, `location: https://<team>.cloudflareaccess.com/cdn-cgi/access/login/...`            | The host app gates the admin UI.                                                |
 | `/s/nope`    | `HTTP/2 404` (the app's uniform not-found page, with `x-robots-tag: noindex, nofollow`), not 302  | The bypass reaches the app, which treats an unknown token as plain not-found.   |
-| `/S/nope`    | `HTTP/2 302` to the Access login                                                                  | A differently-cased path is not public (explained below).                       |
+| `/S/nope`    | `HTTP/2 401` JSON from the app (observed; a 302 to the login is also acceptable)                   | A differently-cased path is not public (explained below).                       |
 
 If `/s/nope` redirects to the login, the share app is missing, has the wrong path, or
 is still propagating. If `/healthz` redirects, the `healthz` destination is missing
 from the share app (or still propagating).
 
-### Why `/S/nope` is a 302 and `/s/nope` is a 404
+### Why `/S/nope` is a 401 and `/s/nope` is a 404
 
 The two layers do not agree about letter case. The app's router and its public
 prefix list are **case-sensitive**: `/s` is public, `/S` is not. Cloudflare Access
@@ -147,13 +147,16 @@ in production) to be **case-insensitive**, so a capitalised path can pass Access
 where the app would not treat it as public. For cellar that mismatch is harmless
 in both directions, because every outcome is closed:
 
-- If Access sends the request to the login (the 302 expected above), nothing from
-  the app is served.
-- If Access ever lets `/S/...` through, the app does not consider it public, so it
-  demands a valid Access JWT and answers 401, and it serves no share content.
+- Access matches the `s` bypass case-insensitively, so `/S/...` reaches the app
+  without a JWT. The app does not consider `/S` public, demands a valid Access JWT,
+  and answers 401 with no share content. This is what was observed on amber's
+  equivalent entry (`/GIT/x` -> 401 while `/git/x` -> 404) and is the expected
+  result for cellar.
+- If Access ever sends the request to the login instead (302), nothing from the
+  app is served either.
 
-The 302 is therefore the expected, safe result, and the contrast with `/s/nope`
-(404 from the app itself) shows the bypass is applied to the lowercase path only.
+Both outcomes are closed; the contrast with `/s/nope` (404 from the app itself)
+shows that only the lowercase prefix is served as public content.
 This is Cloudflare's behaviour, not something this repository controls, so re-run the
 check after any change on Cloudflare's side. Sibling paths such as `/sx` are not
 matched by the `s` entry and stay behind the login as well (observed on healthy for
