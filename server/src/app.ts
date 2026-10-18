@@ -6,6 +6,7 @@ import type { Db } from "./db/db.ts";
 import { EventBus } from "./events.ts";
 import { sharePlugin, type ShareRateLimit } from "./public/share.ts";
 import { apiRoutes } from "./routes/index.ts";
+import { systemRoutes } from "./routes/system.ts";
 import { toApiError } from "./routes/validate.ts";
 import { cfAccessPlugin, type CfAccessKeyGetter } from "./security/cfAccess.ts";
 import { APP_VERSION } from "./version.ts";
@@ -103,6 +104,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
   });
 
   await app.register(apiRoutes, { prefix: "/api" });
+  // --- wave1C routes ---
+  await app.register(systemRoutes, { prefix: "/api" });
+  // --- end wave1C routes ---
   await app.register(sharePlugin, {
     prefix: "/s",
     config: ctx.config,

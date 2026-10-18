@@ -332,6 +332,17 @@ describe("checkToolUpdates: ffmpeg", () => {
     expect((await checkToolUpdates(makeDeps(noSum), { tool: "ffmpeg" }))[0]?.detail).toBe(
       `no checksum for ${FFMPEG_ASSET}`,
     );
+    const wrongSum = routedFetch(
+      githubRoutes({
+        ffmpegArchive: archive,
+        ffmpegUpdatedAt: "t",
+        ffmpegSums: `${"f".repeat(64)}  ${FFMPEG_ASSET}\n`,
+      }),
+    );
+    expect((await checkToolUpdates(makeDeps(wrongSum), { tool: "ffmpeg" }))[0]?.detail).toMatch(
+      /^checksum mismatch/,
+    );
+    expect(existsSync(join(binDir, "ffmpeg"))).toBe(false);
   });
 
   it("checks for ffmpeg without installing when auto-update is off", async () => {
