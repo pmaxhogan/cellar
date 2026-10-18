@@ -121,10 +121,6 @@ async function save(): Promise<void> {
     return;
   }
   const count = Object.keys(result.patch).length;
-  if (count === 0) {
-    resetDraft();
-    return;
-  }
   saving.value = true;
   try {
     overrides.value = await putSettings(api, result.patch);

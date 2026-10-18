@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import DataTable from "primevue/datatable";
+import Dialog from "primevue/dialog";
 import SelectButton from "primevue/selectbutton";
 import type { ChannelRow } from "@cellar/shared";
 import ChannelsPage from "../../src/pages/ChannelsPage.vue";
@@ -344,5 +345,46 @@ describe("channel ref helpers", () => {
     });
     expect(needsResolve({ kind: "id", value: UC })).toBe(false);
     expect(needsResolve({ kind: "user", value: "old" })).toBe(true);
+  });
+});
+
+function openDialog(wrapper: VueWrapper) {
+  const found = wrapper.findAllComponents(Dialog).find((dialog) => dialog.props("visible"));
+  if (found === undefined) throw new Error("no open dialog");
+  return found;
+}
+
+describe("ChannelsPage dialog closing and cleanup", () => {
+  it("opens the add dialog from the empty state and closes it from the header", async () => {
+    const server = fakeServer({ "GET /api/channels": () => page([]) });
+    const wrapper = await mountPage(server);
+    await wrapper.find(".empty-state button").trigger("click");
+    await flush();
+    expect(wrapper.find("#channel-ref").exists()).toBe(true);
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(wrapper.find("#channel-ref").exists()).toBe(false);
+  });
+
+  it("closes the remove confirmation from its header", async () => {
+    const server = fakeServer({
+      "GET /api/channels": () => page([channel({ manual: true })]),
+    });
+    const wrapper = await mountPage(server);
+    await wrapper.find("[data-action='remove-channel']").trigger("click");
+    await flush();
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(wrapper.find(".confirm-message").exists()).toBe(false);
+  });
+
+  it("aborts the load and drops a pending search on unmount", async () => {
+    const server = fakeServer({ "GET /api/channels": () => new Promise(() => undefined) });
+    const wrapper = await mountPage(server);
+    await wrapper.find("[data-test='channel-search']").setValue("abc");
+    wrapper.unmount();
+    expect(server.calls[0]!.signal?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(server.callsTo("GET /api/channels")).toHaveLength(1);
   });
 });

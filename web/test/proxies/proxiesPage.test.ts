@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, type VueWrapper } from "@vue/test-utils";
+import Dialog from "primevue/dialog";
 import ToggleSwitch from "primevue/toggleswitch";
 import type { ProxyRow } from "@cellar/shared";
 import ProxiesPage from "../../src/pages/ProxiesPage.vue";
@@ -317,5 +318,40 @@ describe("Proxy dialog", () => {
     await dialogButton(wrapper, "Cancel").trigger("click");
     await flush();
     expect(urlInput(wrapper).exists()).toBe(false);
+  });
+});
+
+function openDialog(wrapper: VueWrapper) {
+  const found = wrapper.findAllComponents(Dialog).find((dialog) => dialog.props("visible"));
+  if (found === undefined) throw new Error("no open dialog");
+  return found;
+}
+
+describe("ProxiesPage dialog closing and cleanup", () => {
+  it("opens from the empty state and closes dialogs from their headers", async () => {
+    const server = fakeServer({ "GET /api/proxies": () => ({ rows: [] }) });
+    const wrapper = await mountPage(server);
+    await wrapper.find(".empty-state button").trigger("click");
+    await flush();
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(urlInput(wrapper).exists()).toBe(false);
+  });
+
+  it("closes the delete confirmation from its header", async () => {
+    const server = fakeServer({ "GET /api/proxies": () => ({ rows: [proxy()] }) });
+    const wrapper = await mountPage(server);
+    await actions(wrapper, 1).find("[data-action='remove']").trigger("click");
+    await flush();
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(wrapper.find(".confirm-message").exists()).toBe(false);
+  });
+
+  it("aborts an in-flight load on unmount", async () => {
+    const server = fakeServer({ "GET /api/proxies": () => new Promise(() => undefined) });
+    const wrapper = await mountPage(server);
+    wrapper.unmount();
+    expect(server.calls[0]!.signal?.aborted).toBe(true);
   });
 });

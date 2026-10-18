@@ -41,6 +41,7 @@ export interface RecordedCall {
   path: string;
   query: URLSearchParams;
   body: unknown;
+  signal: AbortSignal | null;
 }
 
 export type Handler = (call: RecordedCall) => unknown;
@@ -82,6 +83,7 @@ export function fakeServer(routes: Record<string, Handler> = {}): FakeServer {
       path: url.pathname,
       query: url.searchParams,
       body: text === undefined ? undefined : JSON.parse(text),
+      signal: init?.signal ?? null,
     };
     calls.push(call);
     const handler = table.get(`${method} ${url.pathname}`);

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, type VueWrapper } from "@vue/test-utils";
+import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import ToggleSwitch from "primevue/toggleswitch";
 import type { LocationRow } from "@cellar/shared";
@@ -335,5 +336,36 @@ describe("LocationsPage", () => {
     await dialogButton(wrapper, "Cancel").trigger("click");
     await flush();
     expect(wrapper.find(".confirm-message").exists()).toBe(false);
+  });
+});
+
+function openDialog(wrapper: VueWrapper) {
+  const found = wrapper.findAllComponents(Dialog).find((dialog) => dialog.props("visible"));
+  if (found === undefined) throw new Error("no open dialog");
+  return found;
+}
+
+describe("LocationsPage dialog closing and cleanup", () => {
+  it("opens from the empty state and closes from the header and Cancel", async () => {
+    const server = fakeServer({ "GET /api/locations": () => ({ rows: [] }) });
+    const wrapper = await mountPage(server);
+    await wrapper.find(".empty-state button").trigger("click");
+    await flush();
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(wrapper.find("#location-label").exists()).toBe(false);
+    await wrapper.find("[data-action='add-location']").trigger("click");
+    await flush();
+    await dialogButton(wrapper, "Cancel").trigger("click");
+    await flush();
+    expect(wrapper.find("#location-label").exists()).toBe(false);
+  });
+
+  it("aborts an in-flight load on unmount", async () => {
+    const server = fakeServer({ "GET /api/locations": () => new Promise(() => undefined) });
+    const wrapper = await mountPage(server);
+    expect(wrapper.find(".list-skeleton").exists()).toBe(true);
+    wrapper.unmount();
+    expect(server.calls[0]!.signal?.aborted).toBe(true);
   });
 });

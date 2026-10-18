@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { createMemoryHistory, createRouter, type Router } from "vue-router";
+import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import AccountsPage from "../../src/pages/AccountsPage.vue";
 import AccountStatusBadge from "../../src/components/accounts/AccountStatusBadge.vue";
@@ -513,5 +514,69 @@ describe("AccountStatusBadge", () => {
       return wrapper.text();
     });
     expect(labels).toEqual(["OK", "Pending", "Google link lost", "Cookies invalid", "Disabled"]);
+  });
+});
+
+describe("AccountsPage dialog closing and cleanup", () => {
+  function openDialog(wrapper: VueWrapper) {
+    const found = wrapper.findAllComponents(Dialog).find((dialog) => dialog.props("visible"));
+    if (found === undefined) throw new Error("no open dialog");
+    return found;
+  }
+
+  it("closes the add dialog from its header, Cancel and Later", async () => {
+    const server = fakeServer({
+      "GET /api/accounts": () => ({ rows: [] }),
+      "POST /api/accounts": () => account({ id: 3 }),
+    });
+    const wrapper = await mountPage(server);
+    await wrapper.find(".empty-state button").trigger("click");
+    await flush();
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(wrapper.find("#account-label").exists()).toBe(false);
+
+    await wrapper.find("[data-action='add-account']").trigger("click");
+    await flush();
+    await dialogButton(wrapper, "Cancel").trigger("click");
+    await flush();
+    expect(wrapper.find("#account-label").exists()).toBe(false);
+
+    await wrapper.find("[data-action='add-account']").trigger("click");
+    await flush();
+    await wrapper.find("#account-label").setValue("Third");
+    await wrapper.find("[data-action='save-account']").trigger("click");
+    await flush();
+    await dialogButton(wrapper, "Later").trigger("click");
+    await flush();
+    expect(wrapper.find("[data-test='account-created']").exists()).toBe(false);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("opens the file picker and closes the cookies dialog", async () => {
+    const server = fakeServer({ "GET /api/accounts": () => ({ rows: [account()] }) });
+    const wrapper = await mountPage(server);
+    await card(wrapper, 1).find("[data-action='cookies']").trigger("click");
+    await flush();
+    const input = wrapper.find("[data-test='cookies-file']").element as HTMLInputElement;
+    const click = vi.spyOn(input, "click").mockImplementation(() => undefined);
+    await dialogButton(wrapper, "Choose cookies.txt file").trigger("click");
+    expect(click).toHaveBeenCalled();
+    await dialogButton(wrapper, "Cancel").trigger("click");
+    await flush();
+    expect(wrapper.find("#cookies-text").exists()).toBe(false);
+    await card(wrapper, 1).find("[data-action='cookies']").trigger("click");
+    await flush();
+    openDialog(wrapper).vm.$emit("update:visible", false);
+    await flush();
+    expect(wrapper.find("#cookies-text").exists()).toBe(false);
+  });
+
+  it("aborts an in-flight load on unmount", async () => {
+    const server = fakeServer({ "GET /api/accounts": () => new Promise(() => undefined) });
+    const wrapper = await mountPage(server);
+    expect(wrapper.find(".list-skeleton").exists()).toBe(true);
+    wrapper.unmount();
+    expect(server.calls[0]!.signal?.aborted).toBe(true);
   });
 });

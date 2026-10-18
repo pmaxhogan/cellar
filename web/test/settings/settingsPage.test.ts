@@ -389,3 +389,22 @@ describe("SettingsPage validation", () => {
     expect(wrapper.findAll("[data-test='error']")).toHaveLength(0);
   });
 });
+
+describe("SettingsPage cleanup", () => {
+  it("shows a skeleton while loading and aborts on unmount", async () => {
+    const server = fakeServer({ "GET /api/settings": () => new Promise(() => undefined) });
+    const wrapper = await mountPage(server);
+    expect(wrapper.find(".list-skeleton").exists()).toBe(true);
+    wrapper.unmount();
+    expect(server.calls[0]!.signal?.aborted).toBe(true);
+  });
+
+  it("an edit typed back to the stored value is not a change", async () => {
+    const server = settingsServer();
+    const wrapper = await mountPage(server);
+    await setNumber(wrapper, "eval.interval_minutes", 15);
+    await setNumber(wrapper, "eval.interval_minutes", 60);
+    expect(wrapper.find("[data-action='save']").attributes("disabled")).toBeDefined();
+    expect(putBodies(server)).toEqual([]);
+  });
+});
