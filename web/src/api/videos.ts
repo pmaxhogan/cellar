@@ -397,28 +397,22 @@ export function sharePageUrl(token: string, origin = globalThis.location?.origin
 
 // --- Share links ------------------------------------------------------------
 
-/**
- * The shares API row (POST /api/shares, revoke, GET /api/shares). Defined here
- * until the shared schema lands; it mirrors that contract exactly.
- */
+/** The shares API row and list envelope come from the shared contract. */
+export {
+  ShareLinkRowSchema,
+  SharesListResponseSchema as ShareLinksListResponseSchema,
+  type ShareLinkRow,
+  type ShareStatus,
+} from "@cellar/shared";
+import {
+  ShareLinkRowSchema as SharedShareLinkRowSchema,
+  SharesListResponseSchema as SharedSharesListResponseSchema,
+  type ShareLinkRow,
+  type ShareStatus,
+} from "@cellar/shared";
 export const SHARE_STATUSES = ["active", "expired", "revoked"] as const;
-export const ShareLinkRowSchema = z.object({
-  token: z.string().min(1),
-  video_id: z.string(),
-  title: z.string().nullable(),
-  channel_title: z.string().nullable(),
-  expires_at: z.number().int().nullable(),
-  revoked_at: z.number().int().nullable(),
-  access_count: z.number().int().nonnegative(),
-  last_access_at: z.number().int().nullable(),
-  created_at: z.number().int(),
-  /** Absolute public URL of the share page. */
-  url: z.string(),
-  status: z.enum(SHARE_STATUSES),
-});
-export type ShareLinkRow = z.infer<typeof ShareLinkRowSchema>;
-export const ShareLinksListResponseSchema = pagedSchema(ShareLinkRowSchema);
-export type ShareStatus = (typeof SHARE_STATUSES)[number];
+const ShareLinkRowSchema = SharedShareLinkRowSchema;
+const ShareLinksListResponseSchema = SharedSharesListResponseSchema;
 
 /** What the page shows for a link, from a shares API row or a video detail row. */
 export interface ShareLinkView {

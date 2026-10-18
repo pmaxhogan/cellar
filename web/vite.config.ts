@@ -56,7 +56,7 @@ export default defineConfig({
     },
     // The admin entry carries Vue, the router, pinia, zod and the PrimeVue
     // runtime with the Aura theme. Every page is lazy except Videos.
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 700,
   },
   experimental: {
     renderBuiltUrl: (filename, context) => shareAwareUrl(filename, context),
