@@ -28,7 +28,7 @@ services:
       - /mnt/tank/apps/cellar/media:/media
     read_only: true
     tmpfs:
-      - /tmp:size=512m,uid=3100,gid=3100,mode=1770
+      - /tmp:size=512m,uid=3100,gid=3100,mode=1770,exec
     cap_drop:
       - ALL
     security_opt:
