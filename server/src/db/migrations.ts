@@ -7,6 +7,7 @@
  */
 import { jobsAndNotifications } from "./migrations002.ts";
 import { catalog } from "./migrations003.ts";
+import { titleChangesIndex } from "./migrations004.ts";
 
 export interface Migration {
   readonly name: string;
@@ -91,4 +92,5 @@ export const migrations: readonly Migration[] = [
   { name: "001_init", sql: init },
   { name: "002_jobs_notifications", sql: jobsAndNotifications },
   { name: "003_catalog", sql: catalog },
+  { name: "004_title_changes_index", sql: titleChangesIndex },
 ];

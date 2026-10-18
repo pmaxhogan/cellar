@@ -160,7 +160,8 @@ logging.ts               # pino setup (stdout + pino-roll multistream, redaction
 db/db.ts                 # node:sqlite wrapper: get/all/run/exec/tx with savepoints
 db/migrate.ts            # migration runner (names recorded in a `migrations` table)
 db/migrations.ts         # ordered append-only array of { name, sql }; 001_init is inline,
-                         #   002 is db/migrations002.ts, 003 is db/migrations003.ts
+                         #   002 is db/migrations002.ts, 003 is db/migrations003.ts,
+                         #   004 (title changes index) is db/migrations004.ts
 db/kv.ts, db/paged.ts    # kv get/set (JSON values); paged-query helper + Where builder
 security/cfAccess.ts     # CF Access JWT plugin (amber verbatim, adapted)
 security/secrets.ts      # AES-256-GCM encrypt/decrypt (CELLAR_SECRET_KEY)
@@ -294,7 +295,9 @@ JSON, validated by a shared zod schema on write.
 - `video_changes`: `id`, `video_id`, `recheck_id`, `field`, `old_json`, `new_json`,
   `seen_at`. THE one history store (see "Metadata history and rechecks"). `recheck_id`
   is the `jobs.id` of the `recheck_batch` run that observed the diff (NULL when ingestion
-  wrote it); the spec names the column but no separate table.
+  wrote it); the spec names the column but no separate table. Indexed on
+  `(video_id, seen_at)` for one video's timeline and `(field, seen_at)` (migration 004)
+  for the cross-video Title changes list.
 - `video_stats`: `video_id`, `at`, `views`, `likes`, `comments`, `ryd_dislikes`. A
   derived chart index; see "Metadata history and rechecks" for its status.
 - `thumbnails`: `id`, `video_id`, `variant`, `url`, `sha256`, `path`, `first_seen_at`;
@@ -1804,6 +1807,7 @@ Details never carry credentials (proxies are named by label only). Checks:
 | GET | `/api/videos/:id` | admin | one video with its effective settings, overrides, media rows, thumbnails, share links and previous titles |
 | GET | `/api/videos/:id/history` | admin | `video_changes` timeline, newest first (`page`, `perPage`, `field`, `counters`) |
 | GET | `/api/videos/:id/stats` | admin | counter time series for charts (`from`, `to`) |
+| GET | `/api/title-changes` | admin | every `title` row of `video_changes` across the catalog, newest first (`page`, `perPage`, `channel_id`, `q` substring of the old or new title); see "Videos API" |
 | GET, HEAD | `/api/videos/:id/media/:mediaId` | admin | stream a media file, HTTP Range supported; `?download=1` sends it as an attachment |
 | GET, HEAD | `/api/videos/:id/captions/:lang` | admin | WebVTT captions |
 | GET, HEAD | `/api/videos/:id/thumbnail/:variant` | admin | stored thumbnail variant, or `best`; `?sha=` pins one stored image |
@@ -1914,6 +1918,17 @@ whose old value is empty or not text are skipped). **History**
 `counters=false` and refetches with counters only when the owner toggles them on,
 since counter rows outnumber real changes by hundreds to one. **Stats** (`/stats?from&to`) answers
 `{ points: [{ at, views, likes, comments, ryd_dislikes }] }` oldest first.
+
+**Title changes** (`GET /api/title-changes?page&perPage&channel_id&q`) pages every
+`title` row of `video_changes` across the catalog, newest first (`seen_at`, then `id`),
+as `{ id, video_id, channel_id, channel_title, title, old_title, new_title, changed_at,
+thumbnail_url }`: `title` is the current title, `old_title` / `new_title` are the row's
+decoded values (null when empty, not text or malformed, the same decoding as
+`previous_titles`), `changed_at` is the row's `seen_at` and `thumbnail_url` is the list's
+best stored thumbnail. `channel_id` filters on the video's channel; `q` (trimmed, at most
+200 characters) is a case-insensitive `LIKE` substring of the decoded old OR new title,
+with `%` and `_` escaped so they match literally. The `(field, seen_at)` index from
+migration 004 serves the ordering without a sort.
 
 **Files.** `GET` / `HEAD /videos/:id/media/:mediaId` streams the file with HTTP Range
 (`206`, `416` for an unsatisfiable range, `Accept-Ranges`); `?download=1` adds an

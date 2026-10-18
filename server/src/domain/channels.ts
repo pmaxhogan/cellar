@@ -1,5 +1,6 @@
 import { parseChannelRef, type ChannelRef, type ChannelRow } from "@cellar/shared";
 import type { Db } from "../db/db.ts";
+import { escapeLike } from "../db/paged.ts";
 import { youtubeApi } from "../youtube/api.ts";
 import { ensureChannel } from "../youtube/ingest.ts";
 import { nowOf, type ServiceDeps } from "./deps.ts";
@@ -42,11 +43,6 @@ function toRow(row: ChannelDbRow): ChannelRow {
     manual: Number(row.manual) === 1,
     video_count: Number(row.video_count),
   };
-}
-
-/** Escape LIKE wildcards so user text matches literally (used with ESCAPE '\'). */
-export function escapeLike(text: string): string {
-  return text.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
 export interface ChannelListQuery {

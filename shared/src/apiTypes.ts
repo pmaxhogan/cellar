@@ -821,6 +821,42 @@ export const VideoJobResponseSchema = z.object({
 });
 export type VideoJobResponse = z.infer<typeof VideoJobResponseSchema>;
 
+// ---------------------------------------------------------------------------
+// Title changes across every video (the Title changes page). Added after the
+// original spec; documented in docs/ARCHITECTURE.md under "Videos API".
+//   GET /api/title-changes?page&perPage&channel_id&q -> TitleChangesResponse
+// Each row is one `title` row of video_changes, newest first. `q` is a case
+// insensitive substring of the old or the new title.
+// ---------------------------------------------------------------------------
+export const TitleChangesQuerySchema = z.object({
+  page: pageParam,
+  perPage: perPageParam,
+  channel_id: z.string().min(1).max(64).optional(),
+  q: z.string().trim().max(200).optional(),
+});
+export type TitleChangesQuery = z.infer<typeof TitleChangesQuerySchema>;
+export type TitleChangesQueryInput = z.input<typeof TitleChangesQuerySchema>;
+
+export const TitleChangeRowSchema = z.object({
+  /** video_changes.id */
+  id: z.number().int(),
+  video_id: z.string(),
+  channel_id: z.string().nullable(),
+  channel_title: z.string().nullable(),
+  /** The video's current title. */
+  title: z.string().nullable(),
+  /** Decoded old and new values; null when empty, not text, or malformed. */
+  old_title: z.string().nullable(),
+  new_title: z.string().nullable(),
+  /** seen_at: when the new title was first observed. */
+  changed_at: z.number().int(),
+  /** Same as the videos list: the best stored thumbnail, null when none is stored. */
+  thumbnail_url: z.string().nullable(),
+});
+export type TitleChangeRow = z.infer<typeof TitleChangeRowSchema>;
+export const TitleChangesResponseSchema = pagedSchema(TitleChangeRowSchema);
+export type TitleChangesResponse = z.infer<typeof TitleChangesResponseSchema>;
+
 /** Video ids from JSON (an array) or a form post (repeated or comma separated); deduped. */
 const VideoIdListSchema = z.preprocess(
   (value) => {

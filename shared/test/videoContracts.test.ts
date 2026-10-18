@@ -3,6 +3,8 @@ import {
   BulkDownloadRequestSchema,
   COUNTER_FIELDS,
   isCounterField,
+  TitleChangeRowSchema,
+  TitleChangesQuerySchema,
   TrashRequestSchema,
   VideoDetailSchema,
   VideoHistoryQuerySchema,
@@ -77,5 +79,44 @@ describe("VideoDetailSchema previous_titles", () => {
     expect(entry.parse({ title: "Old", changed_at: 5 })).toEqual({ title: "Old", changed_at: 5 });
     expect(() => entry.parse({ title: "Old" })).toThrow();
     expect(() => entry.parse({ title: null, changed_at: 5 })).toThrow();
+  });
+});
+
+describe("TitleChangesQuerySchema", () => {
+  it("applies the paging defaults and trims q", () => {
+    expect(TitleChangesQuerySchema.parse({})).toEqual({ page: 1, perPage: 50 });
+    expect(
+      TitleChangesQuerySchema.parse({ page: "2", perPage: "25", q: "  cat  ", channel_id: "UCc" }),
+    ).toEqual({ page: 2, perPage: 25, q: "cat", channel_id: "UCc" });
+  });
+
+  it("rejects bad values", () => {
+    for (const bad of [
+      { page: "0" },
+      { page: "x" },
+      { perPage: "201" },
+      { perPage: "-1" },
+      { q: "a".repeat(201) },
+      { channel_id: "" },
+      { channel_id: "U".repeat(65) },
+    ]) {
+      expect(TitleChangesQuerySchema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  it("describes a row with nullable decoded titles", () => {
+    const row = {
+      id: 1,
+      video_id: A,
+      channel_id: null,
+      channel_title: null,
+      title: null,
+      old_title: "Before",
+      new_title: null,
+      changed_at: 5,
+      thumbnail_url: null,
+    };
+    expect(TitleChangeRowSchema.parse(row)).toEqual(row);
+    expect(TitleChangeRowSchema.safeParse({ ...row, changed_at: "5" }).success).toBe(false);
   });
 });

@@ -4,6 +4,8 @@ import {
   isVideoId,
   type CounterField,
   type MediaRow,
+  type TitleChangeRow,
+  type TitleChangesQuery,
   type VideoChangeRow,
   type VideoDetail,
   type VideoEffective,
@@ -18,7 +20,7 @@ import {
 } from "@cellar/shared";
 import type { SQLInputValue } from "node:sqlite";
 import type { Db } from "../db/db.ts";
-import { pagedQuery, parseJsonColumn, Where, type Paged } from "../db/paged.ts";
+import { escapeLike, pagedQuery, parseJsonColumn, Where, type Paged } from "../db/paged.ts";
 import { invalid, notFound } from "./errors.ts";
 import { pickThumbnail } from "./videoFiles.ts";
 
@@ -531,9 +533,81 @@ function previousTitles(db: Db, id: string): VideoDetail["previous_titles"] {
       id,
     )
     .flatMap((row) => {
-      const title = parseJsonColumn(row.old_json);
-      return typeof title === "string" && title !== "" ? [{ title, changed_at: row.seen_at }] : [];
+      const title = titleValue(row.old_json);
+      return title === null ? [] : [{ title, changed_at: row.seen_at }];
     });
+}
+
+/** A `title` row's old or new value as text; null when empty, not text, or malformed. */
+function titleValue(json: string | null): string | null {
+  const value = parseJsonColumn(json);
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
+ * The decoded text of a JSON column in SQL, so LIKE sees the title itself and
+ * not its JSON encoding (quotes, backslashes). Malformed or non-text values
+ * read as NULL instead of raising, like parseJsonColumn.
+ */
+function jsonText(column: string): string {
+  return `(CASE WHEN json_valid(${column}) THEN
+    CASE WHEN json_type(${column}) = 'text' THEN ${column} ->> '$' END END)`;
+}
+
+/**
+ * Every title change across the catalog, newest first (the Title changes
+ * page). Served by the video_changes_field_seen index (migration 004).
+ */
+export function listTitleChanges(db: Db, query: TitleChangesQuery): Paged<TitleChangeRow> {
+  const where = new Where().add("vc.field = 'title'").maybe("v.channel_id = ?", query.channel_id);
+  const q = query.q ?? "";
+  if (q !== "") {
+    const pattern = `%${escapeLike(q)}%`;
+    const escape = "ESCAPE '\\'";
+    where.add(
+      `(${jsonText("vc.old_json")} LIKE ? ${escape} OR ${jsonText("vc.new_json")} LIKE ? ${escape})`,
+      pattern,
+      pattern,
+    );
+  }
+  const page = pagedQuery<
+    {
+      id: number;
+      video_id: string;
+      channel_id: string | null;
+      channel_title: string | null;
+      title: string | null;
+      old_json: string | null;
+      new_json: string | null;
+      seen_at: number;
+    },
+    Omit<TitleChangeRow, "thumbnail_url">
+  >(db, {
+    select: `vc.id, vc.video_id, v.channel_id, c.title AS channel_title, v.title,
+      vc.old_json, vc.new_json, vc.seen_at`,
+    from: `video_changes vc
+      JOIN videos v ON v.id = vc.video_id
+      LEFT JOIN channels c ON c.id = v.channel_id`,
+    where,
+    orderBy: "vc.seen_at DESC, vc.id DESC",
+    page: query.page,
+    perPage: query.perPage,
+    map: (row) => ({
+      id: row.id,
+      video_id: row.video_id,
+      channel_id: row.channel_id,
+      channel_title: row.channel_title,
+      title: row.title,
+      old_title: titleValue(row.old_json),
+      new_title: titleValue(row.new_json),
+      changed_at: row.seen_at,
+    }),
+  });
+  const thumbs = bestThumbnails(db, [...new Set(page.rows.map((row) => row.video_id))]);
+  return {
+    ...page,
+    rows: page.rows.map((row) => ({ ...row, thumbnail_url: thumbs.get(row.video_id) ?? null })),
+  };
 }
 
 function counterValue(json: string | null): number | null {

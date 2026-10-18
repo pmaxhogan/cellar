@@ -69,6 +69,11 @@ export function pagedQuery<R, T>(
   return { rows: rows.map(options.map), total, page, perPage };
 }
 
+/** Escape LIKE wildcards so user text matches literally (used with ESCAPE '\'). */
+export function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 /** Parse a nullable *_json column; a malformed value reads as null. */
 export function parseJsonColumn(value: string | null): unknown {
   if (value === null) {

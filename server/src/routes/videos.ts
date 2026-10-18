@@ -5,6 +5,7 @@ import {
   renderFilename,
   resolveSettings,
   THUMBNAIL_VARIANTS,
+  TitleChangesQuerySchema,
   TrashRequestSchema,
   VIDEO_ID_RE,
   VideoHistoryQuerySchema,
@@ -13,6 +14,7 @@ import {
   type ApiError,
   type BulkDownloadEstimate,
   type ResolvedSettings,
+  type TitleChangesResponse,
   type TrashResponse,
   type VideoDetail,
   type VideoHistoryResponse,
@@ -44,7 +46,14 @@ import {
   resolveMediaPath,
   thumbnailPath,
 } from "../domain/videoFiles.ts";
-import { getVideo, listVideos, videoExists, videoHistory, videoStats } from "../domain/videos.ts";
+import {
+  getVideo,
+  listTitleChanges,
+  listVideos,
+  videoExists,
+  videoHistory,
+  videoStats,
+} from "../domain/videos.ts";
 import { JobQueue } from "../jobs/queue.ts";
 import { jobRegistry, type JobRegistry } from "../jobs/types.ts";
 import { parseBody, parseParams, parseQuery } from "./validate.ts";
@@ -52,7 +61,8 @@ import { parseBody, parseParams, parseQuery } from "./validate.ts";
 /**
  * /api/videos: the catalog list and detail, history and stats, file streaming
  * (media with HTTP Range, captions, thumbnails, metadata), the per-video job
- * triggers, trash and bulk download. Everything here sits behind Access.
+ * triggers, trash and bulk download, plus /api/title-changes (title history
+ * across every video). Everything here sits behind Access.
  */
 
 /** Job types this module enqueues. Their handlers live with the media and recheck code. */
@@ -195,6 +205,10 @@ export const videoRoutes: FastifyPluginAsync<VideoRoutesDeps> = async (app, opti
 
   app.get("/videos", (request): VideosListResponse => {
     return listVideos(db, parseQuery(VideosListQuerySchema, request));
+  });
+
+  app.get("/title-changes", (request): TitleChangesResponse => {
+    return listTitleChanges(db, parseQuery(TitleChangesQuerySchema, request));
   });
 
   app.post("/videos/trash", async (request, reply) => {

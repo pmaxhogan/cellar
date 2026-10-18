@@ -4,7 +4,8 @@ import {
   ChannelsListResponseSchema,
 } from "@cellar/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { escapeLike, getChannel } from "../src/domain/channels.ts";
+import { escapeLike } from "../src/db/paged.ts";
+import { getChannel } from "../src/domain/channels.ts";
 import type { TempApp } from "./helpers.ts";
 import { createWave1App, FakeGoogle, jsonResponse, seedLinkedAccount } from "./wave1aHelpers.ts";
 

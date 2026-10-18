@@ -102,7 +102,12 @@ describe("migrate", () => {
   it("applies every migration once and is idempotent", () => {
     const first = migrate(db, log);
     expect(first.applied).toEqual(migrations.map((m) => m.name));
-    expect(first.applied).toEqual(["001_init", "002_jobs_notifications", "003_catalog"]);
+    expect(first.applied).toEqual([
+      "001_init",
+      "002_jobs_notifications",
+      "003_catalog",
+      "004_title_changes_index",
+    ]);
 
     const second = migrate(db, log);
     expect(second.applied).toEqual([]);
