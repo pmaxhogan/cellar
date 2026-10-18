@@ -164,25 +164,31 @@ test.describe("rules", () => {
     expect(created?.kind).toBe("custom");
     expect(created?.effects).toMatchObject({ reclaim_priority: 1 });
 
-    // A new rule lands last (highest priority). Move it up one with the
-    // keyboard-reachable button, then check the order survives a reload.
+    // Move it one step with the keyboard-reachable button (up, unless the
+    // server put it first), then check the order survives a reload.
     const before = await customOrder(api);
-    expect(before.at(-1)).toBe(name);
-    await row.getByRole("button", { name: `Move ${name} up (lower priority)` }).focus();
+    const from = before.indexOf(name);
+    expect(from).toBeGreaterThanOrEqual(0);
+    expect(before.length).toBeGreaterThan(1);
+    const up = from > 0;
+    const to = up ? from - 1 : from + 1;
+    const there = up ? "up (lower priority)" : "down (higher priority)";
+    const back = up ? "down (higher priority)" : "up (lower priority)";
+    await row.getByRole("button", { name: `Move ${name} ${there}` }).focus();
     await page.keyboard.press("Enter");
-    const expected = [...before.slice(0, -2), name, before.at(-2)!];
+    const expected = [...before];
+    expected[from] = before[to]!;
+    expected[to] = name;
     await expect.poll(() => customOrder(api)).toEqual(expected);
     await page.reload();
     await expect
       .poll(async () => (await shownOrder(page)).map((text) => text.trim()))
       .toEqual(expected);
-    await expect(customRow(page, name).getByTestId("rule-rank")).toHaveText(
-      String(expected.length - 1),
-    );
+    await expect(customRow(page, name).getByTestId("rule-rank")).toHaveText(String(to + 1));
 
-    // And back down again.
+    // And back again.
     await customRow(page, name)
-      .getByRole("button", { name: `Move ${name} down (higher priority)` })
+      .getByRole("button", { name: `Move ${name} ${back}` })
       .click();
     await expect.poll(() => customOrder(api)).toEqual(before);
 
