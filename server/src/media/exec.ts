@@ -85,7 +85,7 @@ function spawnCapture(
           resolve({ code: -1, stdout, stderr, timedOut: error.killed === true });
           return;
         }
-        reject(new ToolRunError(tool, typeof error.code === "string" ? error.code : "unknown"));
+        reject(new ToolRunError(tool, String(error.code)));
       },
     );
   });
