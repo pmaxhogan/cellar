@@ -11,7 +11,8 @@ export interface JobLogger {
 
 /**
  * A logger that writes to the main log (whatever streams `parent` writes to,
- * at the parent's level) and to `file` at debug level, so the per-job file
+ * at the parent's level) and to `file` at debug level (trace when the parent
+ * traces), so the per-job file
  * carries the detail the main log filters out. Redaction is the same as the
  * main logger's because both are built from baseLoggerOptions.
  */
@@ -21,16 +22,16 @@ export function createJobLogger(
   bindings: Record<string, unknown>,
 ): JobLogger {
   const fileStream = pino.destination({ dest: file, sync: true, mkdir: true, append: true });
-  const streams: pino.StreamEntry[] = [{ level: "debug", stream: fileStream }];
-
   const parentLevel = parent.level;
+  const level = parentLevel === "trace" ? "trace" : "debug";
+  const streams: pino.StreamEntry[] = [{ level, stream: fileStream }];
+
   const parentStream = (parent as unknown as Record<symbol, DestinationStream | undefined>)[
     pino.symbols.streamSym
   ];
   if (parentLevel !== "silent" && parentStream !== undefined) {
     streams.push({ level: parentLevel as pino.Level, stream: parentStream });
   }
-  const level = parentLevel === "trace" ? "trace" : "debug";
 
   const options = baseLoggerOptions(level);
   const log = pino(
