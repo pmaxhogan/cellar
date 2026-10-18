@@ -15,6 +15,7 @@ import { bootPipeline } from "./jobs/pipelineBoot.ts"; // wave3
 import { createPipelineDeps } from "./jobs/pipelineWiring.ts"; // wave3
 import { bootIngestion, budgetHooks } from "./jobs/ingestBoot.ts"; // wave2A
 import { registerTakeoutHandler } from "./jobs/handlers/takeout.ts"; // wave5B
+import { registerStatsRollup, scheduleStatsRollup } from "./jobs/handlers/statsRollup.ts"; // charts
 import { createConsoleLogger, createLogger } from "./logging.ts";
 import { installBaselineTools, refreshToolVersions } from "./media/tools.ts";
 import { APP_VERSION } from "./version.ts";
@@ -78,6 +79,11 @@ async function main(): Promise<void> {
   // modules and to the scheduler's queue and schedules (jobs/pipelineWiring.ts).
   bootPipeline(createPipelineDeps({ config, db, log, events, scheduler }));
   // --- end wave3 boot ---
+  // --- charts boot ---
+  // Daily stats rollup (just after 00:10 UTC), plus an immediate run when today has no row yet.
+  registerStatsRollup(jobRegistry, { db, events });
+  scheduleStatsRollup(scheduler, { db, events });
+  // --- end charts boot ---
 
   // --- wave2A boot ---
   // Ingestion and recheck handlers, schedules and action:ingest-now. The returned budget
