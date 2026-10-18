@@ -14,6 +14,8 @@ export interface Toaster {
   success: (summary: string, detail?: string) => void;
   info: (summary: string, detail?: string) => void;
   warn: (summary: string, detail?: string) => void;
+  /** An error the caller already has words for (not a thrown request failure). */
+  error: (summary: string, detail?: string) => void;
   /** Normalizes anything thrown into a readable message. */
   failure: (summary: string, cause: unknown) => void;
 }
@@ -40,6 +42,7 @@ export function useToaster(): Toaster {
     success: (summary, detail) => emit("success", summary, detail),
     info: (summary, detail) => emit("info", summary, detail),
     warn: (summary, detail) => emit("warn", summary, detail, 6000),
+    error: (summary, detail) => emit("error", summary, detail, 8000),
     failure: (summary, cause) => emit("error", summary, normalizeError(cause).message, 8000),
   };
 }

@@ -196,4 +196,16 @@ describe("useToaster", () => {
     expect(add.mock.calls[3]![0].detail).toBe("Boom");
     expect(add.mock.calls[2]![0].life).toBe(6000);
   });
+
+  it("shows an error the caller words itself, without the network prefix", () => {
+    const { toaster, service } = captureToaster(true);
+    const add = vi.spyOn(service!, "add").mockImplementation(() => undefined);
+    toaster.error("Update check failed", "ffmpeg: failed");
+    expect(add.mock.calls[0]![0]).toMatchObject({
+      severity: "error",
+      summary: "Update check failed",
+      detail: "ffmpeg: failed",
+      life: 8000,
+    });
+  });
 });

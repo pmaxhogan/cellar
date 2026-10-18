@@ -18,6 +18,7 @@ interface ToolsBody {
   ffmpeg: ToolInfo;
   js_runtime: string | null;
   pot_provider_url: string | null;
+  ffmpeg_release_tag: string;
 }
 
 test.afterEach(async ({ api }) => {
@@ -49,8 +50,9 @@ test("versions and runtime facts render", async ({ page, api }) => {
     tools.js_runtime ?? "none detected",
   );
   await expect(page.locator('[data-fact="pot-provider"]')).toHaveText(
-    tools.pot_provider_url ?? "not set",
+    tools.pot_provider_url || "not set",
   );
+  await expect(page.locator('[data-fact="ffmpeg-release"]')).toHaveText(tools.ffmpeg_release_tag);
 });
 
 test("check for updates records an outcome and leaves the page working", async ({ page, api }) => {
@@ -85,17 +87,35 @@ test("check for updates records an outcome and leaves the page working", async (
       "never",
     );
   }
+  // The toast follows the worst outcome, so a failed check never reads as "up to date".
+  const outcomes = body.outcomes ?? [];
+  const failed = outcomes.filter((outcome) => outcome.status === "failed");
   await expect(
-    toastWith(page, /Tools are up to date|Updates available|Could not check for updates/),
+    toastWith(
+      page,
+      failed.length > 0
+        ? /Update check failed for/
+        : /Tools are up to date|Updates available|Nothing installed|Tools updated/,
+    ),
   ).toBeVisible();
   await expect(check).toBeEnabled();
 
-  // Offline (or rate limited) the server records the failure per tool.
-  const failed = (body.outcomes ?? []).filter((outcome) => outcome.status === "failed");
+  // Each tool's outcome is listed on the card.
+  for (const outcome of outcomes) {
+    await expect(page.locator(`[data-tool-outcome="${outcome.tool}"]`)).toHaveAttribute(
+      "data-status",
+      outcome.status,
+    );
+  }
+
+  // Offline (or rate limited) the server records the failure per tool, and the card shows it.
   const stored = await api.get<ToolsBody>("/api/tools");
   for (const outcome of failed) {
     const key = outcome.tool as "ytdlp" | "ffmpeg";
     expect(stored[key].last_error).not.toBeNull();
+    await expect(page.locator(`[data-tool-error="${key}"]`)).toContainText(
+      stored[key].last_error ?? "",
+    );
   }
 
   // Nothing was installed: the fake tools are still the ones that run.
