@@ -38,9 +38,12 @@ async function mountPage(component: Component, api: ApiClient = stubApi()) {
 const IMPLEMENTED = new Set([
   "/about",
   "/accounts",
+  "/activity",
   "/channels",
   "/locations",
+  "/notifications",
   "/proxies",
+  "/self-check",
   "/settings",
 ]);
 

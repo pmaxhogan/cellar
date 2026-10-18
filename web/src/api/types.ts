@@ -20,4 +20,13 @@ export type CellarEvent = z.infer<typeof cellarEventSchema>;
  * frames without an `event:` line, so a server that names its frames must have
  * every name listed here (or in shared/) or the UI never sees them.
  */
-export const CELLAR_EVENT_TYPES: readonly string[] = [];
+export const CELLAR_EVENT_TYPES: readonly string[] = [
+  "job.queued",
+  "job.started",
+  "job.progress",
+  "job.done",
+  "job.failed",
+  "job.cancelled",
+  "activity",
+  "notification",
+];

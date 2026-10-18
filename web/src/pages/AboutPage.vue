@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import Button from "primevue/button";
 import Tag from "primevue/tag";
+import { normalizeError, type ApiClientError } from "../api/client.ts";
 import { useApi } from "../api/provide.ts";
+import { getTools, type ToolsResponse } from "../api/tools.ts";
 import { useEventsStore } from "../stores/events.ts";
 import { useStatusStore } from "../stores/status.ts";
 import { formatAbsolute, formatRelative } from "../lib/format.ts";
 import { LOGO_URL } from "../lib/brand.ts";
 import ErrorState from "../components/ErrorState.vue";
 import PageHeader from "../components/PageHeader.vue";
+import ToolVersionsCard from "../components/about/ToolVersionsCard.vue";
 
 const api = useApi();
 const statusStore = useStatusStore();
@@ -31,9 +34,35 @@ const tools = computed(() => {
   ];
 });
 
+/** The updater's view of the tools; null until /api/tools answers. */
+const toolDetail = ref<ToolsResponse | null>(null);
+const toolsError = ref<ApiClientError | null>(null);
+
+async function loadTools(): Promise<void> {
+  try {
+    toolDetail.value = (await getTools(api)) ?? null;
+    toolsError.value = null;
+  } catch (cause) {
+    toolsError.value = normalizeError(cause);
+  }
+}
+
 function reload(): void {
   void statusStore.load(api);
+  void loadTools();
 }
+
+const REPO = "https://github.com/pmaxhogan/cellar";
+const LINKS = [
+  { label: "Source code", href: REPO },
+  { label: "Architecture and API", href: `${REPO}/blob/main/docs/ARCHITECTURE.md` },
+  {
+    label: "Cloudflare Access and tunnel setup",
+    href: `${REPO}/blob/main/docs/setup-cloudflare.md`,
+  },
+  { label: "NAS deploy runbook", href: `${REPO}/blob/main/deploy/README.md` },
+  { label: "Report a problem", href: `${REPO}/issues` },
+];
 
 onMounted(reload);
 </script>
@@ -112,7 +141,8 @@ onMounted(reload);
         </p>
       </article>
 
-      <article class="cellar-card">
+      <ToolVersionsCard v-if="toolDetail" v-model:tools="toolDetail" />
+      <article v-else class="cellar-card">
         <h3>Tools</h3>
         <dl class="about-facts">
           <div v-for="tool in tools" :key="tool.label">
@@ -123,6 +153,24 @@ onMounted(reload);
             </dd>
           </div>
         </dl>
+        <p v-if="toolsError" class="about-note" data-tools-error>
+          Update details are unavailable: {{ toolsError.message }}
+        </p>
+      </article>
+
+      <article class="cellar-card">
+        <h3>Setup and docs</h3>
+        <ul class="about-links">
+          <li v-for="link in LINKS" :key="link.href">
+            <a :href="link.href" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
+          </li>
+        </ul>
+        <p class="about-note">
+          The one-time owner steps (Cloudflare Access applications, the tunnel hostname, the Google
+          OAuth client, and exporting cookies for each account) are tracked on the Trello card
+          "cellar: dashboard steps (Access, tunnel, OAuth, cookies)" and written out in the setup
+          docs above.
+        </p>
       </article>
     </div>
     <p v-else-if="statusStore.error === null" class="cellar-muted">Reading instance status...</p>
@@ -187,6 +235,28 @@ onMounted(reload);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--p-text-muted-color);
+}
+
+.about-note {
+  font-size: 0.82rem;
+  color: var(--p-text-muted-color);
+  margin: 0.6rem 0 0;
+  line-height: 1.5;
+}
+
+.about-links {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.7;
+}
+
+.about-links a {
+  color: var(--p-primary-color);
+  text-decoration: none;
+}
+
+.about-links a:hover {
+  text-decoration: underline;
 }
 
 .about-facts dd {
