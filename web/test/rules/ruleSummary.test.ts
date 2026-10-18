@@ -193,6 +193,9 @@ describe("effectChips and formatEffectValue", () => {
     ).toBe("30 fps; 720p");
     expect(formatEffectValue("quality_priority", "odd")).toBe("odd");
     expect(formatEffectValue("transcode", { mode: "none" })).toBe("off");
+    expect(
+      formatEffectValue("transcode", { mode: "if_not_av1", max_height: 720, max_fps: 30 }),
+    ).toBe("hevc nvenc, q28, max 720p, max 30 fps, if not AV1");
     expect(formatEffectValue("transcode", { mode: "always", codec: "av1_svt", quality: 30 })).toBe(
       "av1 svt, q30, always",
     );

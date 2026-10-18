@@ -433,7 +433,10 @@ Details that are part of the contract:
   "first location" is resolved at evaluation time to the lowest-id enabled location.
 - `transcode`: `{ mode: none | if_not_av1 | always, codec: hevc_nvenc | h264_nvenc |
   av1_svt | av1_nvenc, quality: 0-63 (CQ for NVENC, CRF for SVT-AV1), preset,
-  max_video_bitrate_kbps?, audio_codec: copy | aac | opus, audio_bitrate_kbps? }`. Every
+  max_video_bitrate_kbps?, max_height?, max_fps?, audio_codec: copy | aac | opus,
+  audio_bitrate_kbps? }`. `max_height` downscales so the shorter side of the frame fits
+  (aspect kept, even sizes); `max_fps` keeps every Nth frame with the smallest N that
+  fits (60 -> 30, 50 -> 25, 48 -> 24), so motion stays even. Every
   subfield has a schema default, so a sparse object parses to a complete one. `av1_nvenc`
   is only offered when the hardware
   allows it (the NAS GPU does not). `hevc_nvenc` / `h264_nvenc` are offered in the rule
@@ -1058,10 +1061,12 @@ the target codec family.
   means something else as an SVT CRF, so the rule's quality and preset apply to SVT-AV1
   only when `av1_svt` was chosen explicitly.
 - NVENC argv: `ffmpeg -y -hide_banner -nostats -progress pipe:1 [-hwaccel cuda
-  -hwaccel_output_format cuda] -i in -map 0:v:0 -map 0:a? -map_metadata 0 -sn -dn -c:v
+  -hwaccel_output_format cuda] -i in -map 0:v:0 -map 0:a? -map_metadata 0 -sn -dn
+  [-vf framestep=N,scale_cuda=W:H (scale=W:H without CUDA decode)] -c:v
   hevc_nvenc -preset p5 -rc vbr -cq 28 -b:v 0 [-maxrate/-bufsize from
   max_video_bitrate_kbps] -c:a copy [-tag:v hvc1] [-movflags +faststart] out.<ext>`. The
-  hwaccel pair is added only when NVDEC is available. `-rc vbr -cq <q> -b:v 0` is
+  hwaccel pair is added only when NVDEC is available, and dropped for a downscaled AV1
+  source (Turing NVDEC has no AV1, so frames would reach scale_cuda in system memory). `-rc vbr -cq <q> -b:v 0` is
   deliberate: without `-b:v 0` the encoder keeps its 2 Mb/s default as a ceiling and the
   CQ never applies.
 - Container rule (decided, see "Open technical calls" 1): the original audio is kept

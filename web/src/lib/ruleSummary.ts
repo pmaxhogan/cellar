@@ -228,6 +228,8 @@ function formatTranscode(v: Json): string {
   if (v["mode"] === "none") return "off";
   const parts = [humanize(v["codec"] ?? "hevc_nvenc"), `q${String(v["quality"] ?? 28)}`];
   if (v["preset"] !== undefined) parts.push(String(v["preset"]));
+  if (typeof v["max_height"] === "number") parts.push(`max ${String(v["max_height"])}p`);
+  if (typeof v["max_fps"] === "number") parts.push(`max ${String(v["max_fps"])} fps`);
   parts.push(v["mode"] === "always" ? "always" : "if not AV1");
   return parts.join(", ");
 }

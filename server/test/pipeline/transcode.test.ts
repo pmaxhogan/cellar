@@ -8,11 +8,14 @@ import {
   codecFamily,
   containerFor,
   decideTranscode,
+  frameStep,
   parseClock,
   parseFfmpegProgress,
   parseFfprobe,
   parseRate,
+  scaledSize,
   verifyTranscode,
+  videoFilters,
   type NvencInfo,
   type ProbeInfo,
   type TranscodePlan,
@@ -113,6 +116,63 @@ describe("decideTranscode", () => {
       container: "mp4",
       outputAudio: null,
     });
+  });
+});
+
+describe("downscale and frame step", () => {
+  it("scales the shorter side down, keeping the aspect ratio and even sizes", () => {
+    expect(scaledSize(1920, 1080, 720)).toEqual({ width: 1280, height: 720 });
+    expect(scaledSize(1080, 1920, 720)).toEqual({ width: 720, height: 1280 });
+    expect(scaledSize(1920, 800, 720)).toEqual({ width: 1728, height: 720 });
+    expect(scaledSize(3840, 1634, 720)).toEqual({ width: 1692, height: 720 });
+    expect(scaledSize(1280, 720, 720)).toBeNull();
+    expect(scaledSize(1920, 1080, undefined)).toBeNull();
+    expect(scaledSize(null, 1080, 720)).toBeNull();
+    expect(scaledSize(1920, 0, 720)).toBeNull();
+  });
+
+  it("drops whole frames to meet the cap", () => {
+    expect(frameStep(60, 30)).toBe(2);
+    expect(frameStep(59.94, 30)).toBe(2);
+    expect(frameStep(50, 30)).toBe(2);
+    expect(frameStep(48, 30)).toBe(2);
+    expect(frameStep(120, 30)).toBe(4);
+    expect(frameStep(30, 30)).toBeNull();
+    expect(frameStep(30.0001, 30)).toBeNull();
+    expect(frameStep(25, 30)).toBeNull();
+    expect(frameStep(60, undefined)).toBeNull();
+    expect(frameStep(null, 30)).toBeNull();
+    expect(frameStep(0, 30)).toBeNull();
+  });
+
+  it("plans scale_cuda under CUDA decode and scale otherwise", () => {
+    const capped = tc({ max_height: 720, max_fps: 30 });
+    const gpu = plan(decideTranscode(capped, src({ fps: 60 }), GPU));
+    expect(gpu).toMatchObject({
+      hwaccel: true,
+      scale: { width: 1280, height: 720 },
+      framestep: 2,
+    });
+    expect(videoFilters(gpu)).toBe("framestep=2,scale_cuda=1280:720");
+    const args = buildTranscodeArgs(gpu, capped, "/in.webm", "/out.mkv").join(" ");
+    expect(args).toContain("-dn -vf framestep=2,scale_cuda=1280:720 -c:v hevc_nvenc");
+
+    const cpu = plan(decideTranscode(capped, src(), { ...GPU, nvdec: false }));
+    expect(videoFilters(cpu)).toBe("scale=1280:720");
+    // No NVDEC for AV1 on this GPU: a scaled AV1 source decodes on the CPU.
+    const av1 = plan(
+      decideTranscode(tc({ ...capped, mode: "always" }), src({ vcodec: "av1" }), GPU),
+    );
+    expect(av1.hwaccel).toBe(false);
+    expect(videoFilters(av1)).toBe("scale=1280:720");
+    // An unscaled AV1 source keeps CUDA decode, as before.
+    expect(plan(decideTranscode(tc({ mode: "always" }), src({ vcodec: "av1" }), GPU)).hwaccel).toBe(
+      true,
+    );
+
+    const small = plan(decideTranscode(capped, src({ width: 1280, height: 720, fps: 25 }), GPU));
+    expect(videoFilters(small)).toBeNull();
+    expect(buildTranscodeArgs(small, capped, "/in", "/out")).not.toContain("-vf");
   });
 });
 

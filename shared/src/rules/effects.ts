@@ -162,6 +162,10 @@ export const TranscodeSchema = z.strictObject({
     .regex(/^[A-Za-z0-9]{1,16}$/)
     .default("p5"),
   max_video_bitrate_kbps: z.int().min(50).max(500_000).optional(),
+  /** Downscale so the shorter side of the frame is at most this many pixels. */
+  max_height: z.int().min(144).max(4320).optional(),
+  /** Keep every Nth frame so the rate is at most this (60 -> 30, 50 -> 25, 48 -> 24). */
+  max_fps: z.int().min(1).max(120).optional(),
   audio_codec: z.enum(AUDIO_CODECS).default("copy"),
   audio_bitrate_kbps: z.int().min(8).max(1024).optional(),
 });

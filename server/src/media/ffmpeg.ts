@@ -139,6 +139,10 @@ export interface TranscodePlan {
   outputAudio: string | null;
   /** Run under nice 19 (software encodes). */
   nice: boolean;
+  /** Output frame size when the source is larger than `max_height`, else null. */
+  scale: { width: number; height: number } | null;
+  /** Keep every Nth frame to meet `max_fps`, else null. */
+  framestep: number | null;
 }
 
 export type TranscodeDecision =
@@ -174,6 +178,47 @@ function outputAudioOf(transcode: Transcode, source: ProbeInfo): string | null {
     case "opus":
       return "opus";
   }
+}
+
+/** Round down to an even number (4:2:0 encoders need even dimensions), at least 2. */
+function even(value: number): number {
+  return Math.max(2, Math.floor(value / 2) * 2);
+}
+
+/**
+ * The frame size that brings the shorter side down to `maxShort`, keeping the
+ * aspect ratio, or null when the source already fits or its size is unknown.
+ */
+export function scaledSize(
+  width: number | null,
+  height: number | null,
+  maxShort: number | undefined,
+): { width: number; height: number } | null {
+  if (maxShort === undefined || width === null || height === null || width <= 0 || height <= 0) {
+    return null;
+  }
+  const short = Math.min(width, height);
+  if (short <= maxShort) {
+    return null;
+  }
+  const factor = maxShort / short;
+  return width <= height
+    ? { width: even(maxShort), height: even(height * factor) }
+    : { width: even(width * factor), height: even(maxShort) };
+}
+
+/**
+ * The smallest whole-frame step that brings `fps` to at most `maxFps`, or null
+ * when no step is needed. Dropping whole frames keeps motion even: 60 -> 30,
+ * 59.94 -> 29.97, 50 -> 25, 48 -> 24, 120 -> 30.
+ */
+export function frameStep(fps: number | null, maxFps: number | undefined): number | null {
+  if (maxFps === undefined || fps === null || !(fps > 0)) {
+    return null;
+  }
+  // A small tolerance so 30.0001 reported for a 30 fps stream needs no step.
+  const step = Math.ceil(fps / maxFps - 0.01);
+  return step > 1 ? step : null;
 }
 
 /** Decide whether and how to transcode, from the rule's settings, the probe and the GPU. */
@@ -220,6 +265,11 @@ export function decideTranscode(
   }
   const family = encoder === "libsvtav1" ? "av1" : target;
   const outputAudio = outputAudioOf(transcode, source);
+  const scale = scaledSize(source.width, source.height, transcode.max_height);
+  // Turing NVDEC has no AV1: ffmpeg would fall back to software decode and hand
+  // scale_cuda system-memory frames, so a scaled AV1 source decodes on the CPU.
+  const hwaccel =
+    encoder !== "libsvtav1" && nvenc.nvdec && !(scale !== null && sourceFamily === "av1");
   return {
     action: "transcode",
     plan: {
@@ -227,10 +277,12 @@ export function decideTranscode(
       family,
       fallback,
       requested: transcode.codec,
-      hwaccel: encoder !== "libsvtav1" && nvenc.nvdec,
+      hwaccel,
       container: containerFor(outputAudio),
       outputAudio,
       nice: encoder === "libsvtav1",
+      scale,
+      framestep: frameStep(source.fps, transcode.max_fps),
     },
   };
 }
@@ -283,6 +335,23 @@ function audioArgs(plan: TranscodePlan, transcode: Transcode): string[] {
   }
 }
 
+/**
+ * The `-vf` chain for a plan, or null. Frames stay on the GPU under CUDA
+ * decode, so scaling uses `scale_cuda` there; `framestep` only drops frames
+ * and works on either.
+ */
+export function videoFilters(plan: TranscodePlan): string | null {
+  const filters: string[] = [];
+  if (plan.framestep !== null) {
+    filters.push(`framestep=${String(plan.framestep)}`);
+  }
+  if (plan.scale !== null) {
+    const size = `${String(plan.scale.width)}:${String(plan.scale.height)}`;
+    filters.push(plan.hwaccel ? `scale_cuda=${size}` : `scale=${size}`);
+  }
+  return filters.length === 0 ? null : filters.join(",");
+}
+
 /** The ffmpeg argv (without the tool itself). Progress goes to stdout as key=value blocks. */
 export function buildTranscodeArgs(
   plan: TranscodePlan,
@@ -295,6 +364,10 @@ export function buildTranscodeArgs(
     args.push("-hwaccel", "cuda", "-hwaccel_output_format", "cuda");
   }
   args.push("-i", input, "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-sn", "-dn");
+  const filters = videoFilters(plan);
+  if (filters !== null) {
+    args.push("-vf", filters);
+  }
   args.push(...videoArgs(plan, transcode), ...audioArgs(plan, transcode));
   if (plan.container === "mp4") {
     args.push("-movflags", "+faststart");

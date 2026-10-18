@@ -189,6 +189,8 @@ describe("EffectsEditor: controls", () => {
     await emitOn(wrapper, "transcode-quality", 30);
     await emitOn(wrapper, "transcode-preset", "8");
     await emitOn(wrapper, "transcode-bitrate", 4000);
+    await emitOn(wrapper, "transcode-max-height", 720);
+    await emitOn(wrapper, "transcode-max-fps", 30);
     await emitOn(wrapper, "transcode-audio", "opus");
     await emitOn(wrapper, "transcode-audio-bitrate", 96);
     expect(model.value["transcode"]).toEqual({
@@ -197,6 +199,8 @@ describe("EffectsEditor: controls", () => {
       quality: 30,
       preset: "8",
       max_video_bitrate_kbps: 4000,
+      max_height: 720,
+      max_fps: 30,
       audio_codec: "opus",
       audio_bitrate_kbps: 96,
     });

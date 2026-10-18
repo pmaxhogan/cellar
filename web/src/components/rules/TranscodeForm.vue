@@ -118,6 +118,32 @@ function set(field: string, v: unknown): void {
         />
       </label>
       <label class="cellar-field">
+        <span>Max resolution (shorter side)</span>
+        <InputNumber
+          :model-value="typeof value['max_height'] === 'number' ? value['max_height'] : null"
+          :min="144"
+          :max="4320"
+          placeholder="keep source size"
+          size="small"
+          :disabled="disabled"
+          data-test="transcode-max-height"
+          @update:model-value="(v: number | null) => set('max_height', v)"
+        />
+      </label>
+      <label class="cellar-field">
+        <span>Max frame rate (drops whole frames)</span>
+        <InputNumber
+          :model-value="typeof value['max_fps'] === 'number' ? value['max_fps'] : null"
+          :min="1"
+          :max="120"
+          placeholder="keep source rate"
+          size="small"
+          :disabled="disabled"
+          data-test="transcode-max-fps"
+          @update:model-value="(v: number | null) => set('max_fps', v)"
+        />
+      </label>
+      <label class="cellar-field">
         <span>Audio</span>
         <Select
           :model-value="value['audio_codec'] ?? 'copy'"
