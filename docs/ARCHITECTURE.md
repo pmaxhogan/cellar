@@ -1323,12 +1323,24 @@ Rules for the public surface:
 - Access control happens at the edge too: a second Cloudflare Access application scoped
   to `cellar.maxhogan.dev/s` carries a Bypass Everyone policy; the app's own public
   prefixes are `/healthz` and `/s` (see "Security model").
-- Every successful share view increments `access_count` and sets `last_access_at`.
+- Every successful share view (a GET of `/s/:token`, not HEAD, `/meta`, media or
+  assets) increments `access_count` and sets `last_access_at`.
+- The uniform 404 also covers a live link's missing file, unknown sub-path or bad caption
+  language, and every sub-route of an invalid token answers the HTML 404 page, so no
+  response distinguishes a link's state. Token routes log at `warn` so a live link never
+  enters the request log.
+- The page payload and `/meta` (`SharePublicData` in `shared/src/apiTypes.ts`) and
+  `metadata.json` are built from explicit field lists. `metadata.json` serves the stored
+  info.json reduced to an allowlist of keys (no container paths, request headers, signed
+  format URLs or playlist names), else a subset of the catalog row; both carry
+  `share: true`.
 
 ### Admin side
 
 `GET/POST /api/shares` list (paged, searchable/filterable/sortable, with expiry) and
-create; revoke individually or in bulk (select-all revoke). The video detail page lists
+create; revoke individually or in bulk (select-all revoke); hard delete a revoked link.
+Create and revoke write `share.created` / `share.revoked` activity rows that name a
+six-character token hint, never the whole token. The video detail page lists
 and creates links for that video. The condition field `has_share_link` and the context
 `shareLinkCount` let rules see whether a video has a link.
 
@@ -1425,8 +1437,10 @@ Details never carry credentials (proxies are named by label only). Checks:
 | PUT | `/api/settings` | admin | the body is the sparse patch itself (a `{ patch }` wrapper is also accepted); a null value clears one; answers `{ overrides }` |
 | GET | `/api/shares` | admin | paged share links (search/filter/sort, expiry) |
 | POST | `/api/shares` | admin | create a link for a video (optional expiry) |
-| POST | `/api/shares/:token/revoke` | admin | revoke one link (provisional shape) |
-| POST | `/api/shares/revoke` | admin | bulk / select-all revoke (provisional shape) |
+| GET | `/api/shares/:token` | admin | one link |
+| POST | `/api/shares/:token/revoke` | admin | revoke one link (idempotent; no body) |
+| POST | `/api/shares/revoke` | admin | bulk revoke: `{ tokens }` or `{ all_matching: filters }` -> `{ count }` |
+| DELETE | `/api/shares/:token` | admin | hard delete a revoked link (409 while it is not revoked) |
 | GET | `/api/notifications` | admin | paged inbox (`unacked` filter) |
 | POST | `/api/notifications/:id/ack` | admin | acknowledge; answers the notification row |
 | POST | `/api/notifications/ack-all` | admin | acknowledge every unacknowledged notification; answers `{ acked }` |
