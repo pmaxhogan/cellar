@@ -1790,7 +1790,11 @@ services:
   `noexec`. `yt-dlp_linux` is a PyInstaller onefile build that unpacks itself into
   `$TMPDIR` on every run, which needs an executable directory, so a dedicated tmpfs
   `/run/ytdlp` (256 MB, mode 0700, `exec`) is mounted and `TMPDIR=/run/ytdlp` is set in
-  the service environment. Nothing else gets an exec mount.
+  the service environment. Nothing else gets an exec mount. A killed run leaves its
+  `_MEI*` directory (about 45 MB) behind, so before each yt-dlp run `media/exec.ts`
+  removes `_MEI*` directories in the child's `$TMPDIR` that are older than 10 minutes
+  and that no live process has a file mapped from (read from `/proc/*/maps`, so a long
+  download keeps its files; without `/proc` nothing is removed).
 - No published ports: the Cloudflare tunnel reaches the container by DNS alias.
 - GPU: reserved with the mkvid pattern (`deploy.resources.reservations.devices`);
   `NVIDIA_VISIBLE_DEVICES=all`, `NVIDIA_DRIVER_CAPABILITIES=video,compute,utility`.
