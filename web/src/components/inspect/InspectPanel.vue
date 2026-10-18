@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { RouterLink } from "vue-router";
 import Button from "primevue/button";
 import Tag from "primevue/tag";
 import { EFFECT_KEYS, effectRegistry, type InspectResponse } from "@cellar/shared";
@@ -10,6 +9,7 @@ import { inspectVideo, setVideoOverrides } from "../../api/rules.ts";
 import ConfirmDialog from "../ConfirmDialog.vue";
 import ErrorState from "../ErrorState.vue";
 import ListSkeleton from "../ListSkeleton.vue";
+import RuleLink from "./RuleLink.vue";
 import EffectsEditor from "../rules/EffectsEditor.vue";
 import { formatEffectValue } from "../../lib/ruleSummary.ts";
 import { useRuleLookups } from "../../lib/rulesLookups.ts";
@@ -21,7 +21,7 @@ import { useToaster } from "../../lib/toast.ts";
  * priority order, the effective settings with the rule each value came from,
  * and an editor for the per-video override rule (PUT /api/videos/:id/overrides,
  * where null deletes the override). Used by the Inspect page and embeddable on
- * the video detail page. Needs a router for its rule links.
+ * the video detail page.
  */
 const props = defineProps<{ videoId: string }>();
 const emit = defineEmits<{ loaded: [InspectResponse] }>();
@@ -42,15 +42,12 @@ let controller: AbortController | null = null;
 const dirty = computed(
   () => JSON.stringify(overrides.value) !== JSON.stringify(data.value?.overrides ?? {}),
 );
-const ruleNames = computed(
-  () => new Map((data.value?.matched ?? []).map((rule) => [rule.id, rule])),
-);
-const settings = computed(() => {
-  const current = data.value;
-  if (current === null) return [];
+/** The effective-settings table rows, each with the rule its value came from. */
+function settingsRows(current: InspectResponse) {
+  const ruleNames = new Map(current.matched.map((rule) => [rule.id, rule]));
   return EFFECT_KEYS.filter((key) => key in current.effective).map((key) => {
     const source = current.provenance[key] ?? "default";
-    const rule = source === "default" ? undefined : ruleNames.value.get(source);
+    const rule = source === "default" ? undefined : ruleNames.get(source);
     return {
       key,
       label: effectRegistry[key].ui.label,
@@ -59,7 +56,7 @@ const settings = computed(() => {
       rule,
     };
   });
-});
+}
 
 function adopt(next: InspectResponse): void {
   data.value = next;
@@ -104,10 +101,6 @@ async function save(effects: Record<string, unknown> | null): Promise<void> {
 function saveOverrides(): void {
   const effects = overrides.value;
   void save(Object.keys(effects).length === 0 ? null : effects);
-}
-
-function ruleLink(id: number) {
-  return { path: "/rules", query: { edit: String(id) } };
 }
 
 function kindLabel(kind: string): string {
@@ -158,9 +151,7 @@ onBeforeUnmount(() => controller?.abort());
         <p class="cellar-note">In priority order: a later rule overrides the ones before it.</p>
         <ol class="inspect-panel__rules" data-test="inspect-matched">
           <li v-for="rule in data.matched" :key="rule.id" data-test="matched-rule">
-            <RouterLink v-if="rule.kind !== 'video'" :to="ruleLink(rule.id)">
-              {{ rule.name }}
-            </RouterLink>
+            <RuleLink v-if="rule.kind !== 'video'" :rule-id="rule.id">{{ rule.name }}</RuleLink>
             <span v-else>{{ rule.name }}</span>
             <Tag :value="kindLabel(rule.kind)" severity="secondary" />
           </li>
@@ -179,7 +170,7 @@ onBeforeUnmount(() => controller?.abort());
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in settings" :key="row.key" :data-effect="row.key">
+            <tr v-for="row in settingsRows(data)" :key="row.key" :data-effect="row.key">
               <th scope="row">{{ row.label }}</th>
               <td data-test="setting-value">{{ row.value }}</td>
               <td data-test="setting-source">
@@ -190,9 +181,9 @@ onBeforeUnmount(() => controller?.abort());
                   data-test="source-override"
                   >override</a
                 >
-                <RouterLink v-else :to="ruleLink(row.source)" data-test="source-link">
+                <RuleLink v-else :rule-id="row.source" data-test="source-link">
                   {{ row.rule?.name ?? `rule #${row.source}` }}
-                </RouterLink>
+                </RuleLink>
               </td>
             </tr>
           </tbody>

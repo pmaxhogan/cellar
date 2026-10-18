@@ -24,10 +24,9 @@ const emit = defineEmits<{ "update:modelValue": [string | number[]] }>();
 
 const choices = computed(() => [...props.modes, { label: props.listLabel, value: LIST }]);
 const mode = computed(() => (Array.isArray(props.modelValue) ? LIST : String(props.modelValue)));
-const ids = computed<number[]>(() =>
-  Array.isArray(props.modelValue)
-    ? props.modelValue.filter((v): v is number => typeof v === "number")
-    : [],
+// Only read while the value is a list (the MultiSelect renders in list mode only).
+const ids = computed(() =>
+  (props.modelValue as unknown[]).filter((v): v is number => typeof v === "number"),
 );
 
 function setMode(next: string): void {

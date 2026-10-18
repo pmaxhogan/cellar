@@ -30,8 +30,7 @@ export interface ConditionContext {
 
 export const conditionContextKey: InjectionKey<ConditionContext> = Symbol("cellar.condition");
 
+/** The context of the enclosing ConditionTree; groups and leaves only render inside one. */
 export function useConditionContext(): ConditionContext {
-  const ctx = inject(conditionContextKey, null);
-  if (ctx === null) throw new Error("condition builder components must sit inside ConditionTree");
-  return ctx;
+  return inject(conditionContextKey) as ConditionContext;
 }

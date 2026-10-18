@@ -9,6 +9,7 @@ import {
   initialEffectValue,
   setKeys,
 } from "../../lib/rulesEffects.ts";
+import { useRuleLookups } from "../../lib/rulesLookups.ts";
 import EffectControl from "./EffectControl.vue";
 
 /**
@@ -26,6 +27,7 @@ const emit = defineEmits<{
   validity: [boolean];
 }>();
 
+useRuleLookups();
 const keys = computed(() => setKeys(props.modelValue));
 const groups = computed(() => addableEffects(props.kind, keys.value));
 const errors = computed(() => effectErrors(props.modelValue, props.kind));

@@ -211,11 +211,7 @@ export function changeOp(leaf: UiLeaf, op: string): void {
     leaf.value = (leaf.value[0] as unknown) ?? 0;
     return;
   }
-  if (
-    (before === "text" && after === "regex") ||
-    (before === "regex" && after === "text") ||
-    (before === "bool" && after === "null_flag")
-  ) {
+  if ((before === "text" && after === "regex") || (before === "regex" && after === "text")) {
     return;
   }
   leaf.value = defaultValue(after, info);

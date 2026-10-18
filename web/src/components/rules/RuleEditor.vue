@@ -4,7 +4,6 @@ import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import ToggleSwitch from "primevue/toggleswitch";
 import {
-  RuleDraftSchema,
   matchAll,
   type AstError,
   type ConditionNode,
@@ -14,6 +13,7 @@ import {
 import { useApi } from "../../api/provide.ts";
 import { createRule, updateRule, type RuleDraftBody } from "../../api/rules.ts";
 import { normalizeError } from "../../api/client.ts";
+import { useRuleLookups } from "../../lib/rulesLookups.ts";
 import ConditionTree from "./ConditionTree.vue";
 import EffectsEditor from "./EffectsEditor.vue";
 import RulePreviewPanel from "./RulePreviewPanel.vue";
@@ -36,6 +36,7 @@ const props = withDefaults(
 const emit = defineEmits<{ saved: [RuleRow]; cancel: [] }>();
 
 const api = useApi();
+useRuleLookups();
 const kind = computed<RuleKind>(() => props.rule?.kind ?? "custom");
 const isGlobal = computed(() => kind.value === "global");
 const nameId = useId();
@@ -61,9 +62,7 @@ const saveError = ref<string | null>(null);
 const conditionValid = computed(() => conditionErrors.value.length === 0);
 const nameError = computed(() => {
   const trimmed = name.value.trim();
-  if (trimmed === "") return "Give the rule a name.";
-  if (trimmed.length > 200) return "Names are at most 200 characters.";
-  return null;
+  return trimmed === "" ? "Give the rule a name." : null;
 });
 const canSave = computed(
   () => nameError.value === null && conditionValid.value && effectsValid.value && !saving.value,
@@ -83,13 +82,8 @@ function draft(): RuleDraftBody {
 
 async function save(): Promise<void> {
   if (!canSave.value) return;
+  // The server validates the draft with the same shared RuleDraftSchema.
   const body = draft();
-  const checked = RuleDraftSchema.safeParse(body);
-  if (!checked.success) {
-    const first = checked.error.issues[0];
-    saveError.value = `${first?.path.join(".") ?? ""} ${first?.message ?? "Invalid rule"}`.trim();
-    return;
-  }
   saving.value = true;
   saveError.value = null;
   try {

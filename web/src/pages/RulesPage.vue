@@ -98,7 +98,7 @@ async function toggle(rule: RuleRow, enabled: boolean): Promise<void> {
     const saved = await updateRule(api, rule.id, { ...draftFromRow(rule), enabled });
     rows.value = rows.value.map((row) => (row.id === rule.id ? saved : row));
   } catch (cause) {
-    toast.failure(`Could not ${enabled ? "enable" : "disable"} the rule`, cause);
+    toast.failure("Could not update the rule", cause);
   } finally {
     busy.value = false;
   }
@@ -121,9 +121,7 @@ async function duplicate(rule: RuleRow): Promise<void> {
   }
 }
 
-async function confirmDelete(): Promise<void> {
-  const rule = deleting.value;
-  if (rule === null) return;
+async function confirmDelete(rule: RuleRow): Promise<void> {
   deleteBusy.value = true;
   try {
     await deleteRule(api, rule.id);
@@ -139,7 +137,8 @@ async function confirmDelete(): Promise<void> {
 
 /** Moves a custom rule from one list index to another and persists the order. */
 async function move(from: number, to: number): Promise<void> {
-  if (from === to || to < 0 || to >= custom.value.length) return;
+  // The Up / Down buttons are disabled at the ends and moveItem clamps.
+  if (from === to) return;
   const before = rows.value;
   const ordered = moveItem(custom.value, from, to);
   // Optimistic: renumber positions locally so the list redraws at once.
@@ -195,8 +194,7 @@ onMounted(async () => {
   void lookups.ensureAccounts();
   void lookups.ensureProxies();
   await load();
-  const wanted = route?.query["edit"];
-  const id = Number(Array.isArray(wanted) ? wanted[0] : wanted);
+  const id = Number(route?.query["edit"]);
   const target = rows.value.find((row) => row.id === id);
   if (target !== undefined) openEditor(target);
 });
@@ -301,8 +299,8 @@ onMounted(async () => {
       confirm-label="Delete"
       danger
       :busy="deleteBusy"
-      @update:visible="(v: boolean) => (deleting = v ? deleting : null)"
-      @confirm="confirmDelete"
+      @update:visible="deleting = null"
+      @confirm="confirmDelete(deleting!)"
     />
   </section>
 </template>

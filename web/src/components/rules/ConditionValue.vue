@@ -26,7 +26,7 @@ const disabled = computed(() => ctx.disabled.value);
 const isSeconds = computed(() => props.node.field === "duration_s");
 
 const enumOptions = computed(() =>
-  (info.value.options ?? []).map((value) => ({ label: humanize(value), value })),
+  info.value.options!.map((value) => ({ label: humanize(value), value })),
 );
 const accountOptions = computed(() =>
   lookups.accounts.value.map((row) => ({ label: row.label, value: row.id })),

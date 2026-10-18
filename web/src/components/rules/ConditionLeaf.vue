@@ -45,7 +45,7 @@ const valueKind = computed(() => operatorInfo(props.node.field, props.node.op)?.
 const showCi = computed(() => info.value.caseFlag === true && valueKind.value !== undefined);
 const sourceOptions = computed(() => [
   { label: "any source", value: null },
-  ...(info.value.options ?? []).map((value) => ({ label: humanize(value), value })),
+  ...info.value.options!.map((value) => ({ label: humanize(value), value })),
 ]);
 const errors = computed(() => ctx.errors.value.get(props.node._key) ?? []);
 const ciId = computed(() => `cond-ci-${props.node._key}`);
@@ -159,7 +159,7 @@ function onDragEnd(): void {
     <p v-if="info.description" class="cellar-note">{{ info.description }}</p>
     <ul v-if="errors.length > 0" class="cond-errors">
       <li v-for="error in errors" :key="error.pointer + error.message" data-test="leaf-error">
-        <span class="mono">{{ error.pointer || "/" }}</span> {{ error.message }}
+        <span class="mono">{{ error.pointer }}</span> {{ error.message }}
       </li>
     </ul>
   </div>

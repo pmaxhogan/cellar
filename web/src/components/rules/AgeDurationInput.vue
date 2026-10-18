@@ -27,7 +27,8 @@ const object = computed(() => toDurationObject(props.modelValue));
 const summary = computed(() => formatRuleDuration(props.modelValue));
 
 function set(unit: keyof DurationObjectValue, value: number | null): void {
-  const next: DurationObjectValue = { ...(object.value ?? {}) };
+  // Only the unit inputs call this, and they render only when the value is an object.
+  const next: DurationObjectValue = { ...object.value! };
   if (value === null) delete next[unit];
   else next[unit] = value;
   emit("update:modelValue", next);
@@ -55,7 +56,7 @@ function set(unit: keyof DurationObjectValue, value: number | null): void {
     </template>
     <InputText
       v-else
-      :model-value="String(modelValue ?? '')"
+      :model-value="String(modelValue)"
       size="small"
       aria-label="ISO-8601 duration"
       :disabled="disabled"

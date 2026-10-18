@@ -98,8 +98,10 @@ export function provideRuleLookups(api: ApiClient): RuleLookups {
   return lookups;
 }
 
-/** The provided lookups, or a private instance when a component is used on its own. */
+/**
+ * The provided lookups. A component mounted without a provider (an editor
+ * used on its own) creates one and provides it, so its descendants share it.
+ */
 export function useRuleLookups(): RuleLookups {
-  const provided = inject(ruleLookupsKey, null);
-  return provided ?? createRuleLookups(useApi());
+  return inject(ruleLookupsKey, null) ?? provideRuleLookups(useApi());
 }

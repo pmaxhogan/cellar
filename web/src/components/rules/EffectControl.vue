@@ -5,7 +5,7 @@ import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
-import { effectRegistry, type EffectKey } from "@cellar/shared";
+import { effectRegistry, type EffectKey, type EffectOption } from "@cellar/shared";
 import { formatEffectValue } from "../../lib/ruleSummary.ts";
 import { useRuleLookups } from "../../lib/rulesLookups.ts";
 import AgeDurationInput from "./AgeDurationInput.vue";
@@ -31,7 +31,7 @@ const hint = computed(() =>
 );
 
 const locationOptions = computed(() => [
-  { label: ui.value.nullLabel ?? "First enabled location", value: null },
+  { label: ui.value.nullLabel, value: null },
   ...lookups.locations.value.map((row) => ({
     label: row.enabled ? row.label : `${row.label} (disabled)`,
     value: row.id,
@@ -87,7 +87,7 @@ function setNullable(isNull: boolean, fallback: unknown): void {
           :input-id="nullId"
           :disabled="disabled"
           data-test="effect-null"
-          @update:model-value="(v: boolean) => setNullable(v, ui.min ?? 1)"
+          @update:model-value="(v: boolean) => setNullable(v, ui.min)"
         />
         <label :for="nullId">{{ ui.nullLabel }}</label>
       </span>
@@ -108,7 +108,7 @@ function setNullable(isNull: boolean, fallback: unknown): void {
     <Select
       v-else-if="control === 'select'"
       :model-value="modelValue"
-      :options="ui.options ? [...ui.options] : []"
+      :options="ui.options as EffectOption[]"
       option-label="label"
       option-value="value"
       :disabled="disabled"
@@ -190,7 +190,7 @@ function setNullable(isNull: boolean, fallback: unknown): void {
           data-test="effect-null"
           @update:model-value="(v: boolean) => setNullable(v, { days: 1 })"
         />
-        <label :for="nullId">{{ ui.nullLabel ?? "None" }}</label>
+        <label :for="nullId">{{ ui.nullLabel }}</label>
       </span>
       <AgeDurationInput
         v-if="modelValue !== null"

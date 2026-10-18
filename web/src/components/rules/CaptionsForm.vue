@@ -95,7 +95,7 @@ function onText(next: string | undefined): void {
           @update:model-value="onText"
         />
         <Tag
-          v-for="lang in languages ?? []"
+          v-for="lang in languages!"
           :key="lang"
           :value="lang"
           severity="secondary"
