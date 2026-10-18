@@ -25,6 +25,11 @@ require a note in the PR/commit message and a doc update.
   it means the same structure as `amber/docs/ARCHITECTURE.md`.
 - Items marked "provisional" are technical calls the spec leaves open; they hold until
   an implementer records the final call (see "Open technical calls").
+- Where the code on main records a wire detail (a path, a verb, a column, an event name),
+  this document states the code's shape; the code wins on wire details and the locked
+  decisions in the spec win on intent. Sections that describe modules not yet on main
+  (videos, rules routes, shares, Takeout import, the download and transcode jobs) stay
+  normative spec; their API shapes are pinned in `shared/src/apiTypes.ts`.
 - Everything here is ASCII only. `-` is used instead of dashes and `->` for arrows.
 
 Map from sections here to the spec:
@@ -119,8 +124,10 @@ coverage-baseline.json
 docs/ARCHITECTURE.md      # this file
 docs/setup-cloudflare.md  # host Access app + /s bypass app, with curl checks
 docs/brand/palette.md     # cellar palette with measured contrast ratios
-shared/   @cellar/shared  # zod schemas, API types, rule AST + effects registry, settings
-                          #   registry, id parser, filename template renderer (pure, no IO)
+shared/   @cellar/shared  # zod schemas, API types (apiTypes.ts), rules/ (AST, evaluate,
+                          #   merge, nextFlip, effects registry, default rules), settings
+                          #   registry, id parser, Takeout parsers, filename template
+                          #   renderer (pure, no IO)
 server/   @cellar/server  # Fastify 5, node:sqlite, jobs, yt-dlp/ffmpeg runners
 web/      @cellar/web     # Vue 3 + Vite + PrimeVue 4 admin SPA (entry index.html)
                           #   + public share entry (share.html -> web/src/share.ts)
@@ -143,19 +150,26 @@ config.ts                # env parsing/validation (zod), fail-fast
 logging.ts               # pino setup (stdout + pino-roll multistream, redaction)
 db/db.ts                 # node:sqlite wrapper: get/all/run/exec/tx with savepoints
 db/migrate.ts            # migration runner (names recorded in a `migrations` table)
-db/migrations.ts         # ordered append-only array of { name, sql }
+db/migrations.ts         # ordered append-only array of { name, sql }; 001_init is inline,
+                         #   002 is db/migrations002.ts, 003 is db/migrations003.ts
+db/kv.ts, db/paged.ts    # kv get/set (JSON values); paged-query helper + Where builder
 security/cfAccess.ts     # CF Access JWT plugin (amber verbatim, adapted)
 security/secrets.ts      # AES-256-GCM encrypt/decrypt (CELLAR_SECRET_KEY)
 security/publicPaths.ts  # isPublicPath: ["/healthz", "/s"], shared with the SPA fallback
-domain/                  # no Fastify inside: videos, sources, channels, accounts, rules,
-                         #   ruleEval, effective, locations, reaper, mover, shares,
-                         #   notifications, selfcheck, takeout, bulk, stats, errors
+domain/                  # no Fastify inside: videos, sources, channels, accounts,
+                         #   accountStore, rules, ruleEval, effective, locations, proxies,
+                         #   settings, reaper, mover, shares, notifications, activity,
+                         #   selfcheck, systemDeps, deps, takeout, bulk, stats, errors
 youtube/                 # api, oauth, quota, feeds, ryd, idParser (re-export of shared)
-media/                   # ytdlp, ffmpeg, formats, captions, thumbnails, versions, tools
-jobs/                    # scheduler, queue, types, handlers/*
-routes/*.ts              # thin REST routes per resource; routes/validate.ts
-                         #   (parseBody / parseQuery / parseParams)
-public/share.ts          # the /s routes (public surface)
+media/                   # exec (tool runner), tools (baseline install + updater), ytdlp,
+                         #   ffmpeg, formats, captions, thumbnails, versions
+jobs/                    # scheduler, queue, types, jobLog, boot, handlers/*
+routes/*.ts              # thin REST routes per resource, mounted by plugins (wave1a:
+                         #   accounts, channels, locations, proxies, settings; wave1b:
+                         #   jobs, activity, actions, notifications; system: tools,
+                         #   checks); routes/validate.ts (parseBody / parseQuery /
+                         #   parseParams, toApiError)
+public/share.ts          # the /s routes (public surface); public/legalPages.ts
 events.ts                # SSE bus (/api/events)
 web.ts                   # serves the built SPA(s) + client-route fallback
 ```
@@ -164,22 +178,38 @@ Rules of the road (amber pattern):
 
 - `domain/*.ts` contains no Fastify; routes are thin and call domain functions.
 - `domain/errors.ts` defines `DomainError` and its HTTP mapping; a single Fastify error
-  handler maps it. 5xx responses carry a fixed message; the real error is logged.
+  handler maps it. 5xx responses carry a fixed message; the real error is logged. Codes:
+  `not_found` 404, `conflict` 409, `invalid` 400, `immutable` 409, `unsupported` 400,
+  `precondition_failed` 412, `quota_exhausted` 429, `no_account` 409. Error bodies are
+  `{ error, code?, details? }`; validation failures carry `details.fields` (path ->
+  message).
 - `routes/validate.ts` parses bodies, queries and params with the shared zod schemas.
 - `shared/` is pure: no IO, no Node-only imports. It must be built before `server` and
   `web` resolve its types (`npm run build` and `npm run typecheck` do that in order).
 
 ## Data model (SQLite)
 
-DB file: `$DATA_DIR/cellar.db`. Pragmas on open: `journal_mode=WAL`, `synchronous=FULL`,
-`foreign_keys=ON`, `busy_timeout=5000`. Single process, single writer. All
+DB file: `$DATA_DIR/state/cellar.db` (the `state/` directory is mode 0700). Pragmas on
+open: `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, `busy_timeout=5000`.
+Single process, single writer. All
 multi-statement writes run inside transactions via the `tx()` helper (savepoints when
 nested). The wrapper is typed: `get` / `all` / `run` / `exec` / `tx`.
 
 Migrations: `db/migrations.ts` exports an ordered list `{ name, sql }`. The runner
 records applied names in a `migrations` table, one transaction per migration. Never edit
-an applied migration; append new ones. The default rule set (below) is installed by a
-migration at first init, and `kv.installed_at` is written at first DB init.
+an applied migration; append new ones. `kv.installed_at` is written at first DB init
+(`ensureInstalledAt`, never overwritten). The default rule set (below) will be installed
+at first init from `shared/src/rules/defaults.ts`; the rules domain that does so is not
+on main yet, and no present migration inserts rules. Present migrations:
+
+- `001_init`: `settings`, `kv`, `locations` (seeded with one `media` -> `/media` row),
+  `accounts`, `account_secrets`.
+- `002_jobs_notifications`: `jobs`, `activity`, `notifications`, `notification_state`,
+  `push_subscriptions`, `proxies`, `checks`.
+- `003_catalog`: `channels`, `channel_sources`, `videos`, `video_sources`,
+  `video_changes`, `video_stats`, `thumbnails`, `media`, `rules`, `video_effective`,
+  `rule_notify_counts`, `quota_usage`, `stats_daily`, `share_links`, and the `videos_fts`
+  table with its triggers.
 
 All times are epoch milliseconds (INTEGER). Every table carries `created_at` and
 `updated_at` unless a bullet shows its columns without them (those are append-only logs
@@ -192,51 +222,65 @@ JSON, validated by a shared zod schema on write.
   `api_quota_reserved`, `scrape_budget_per_hour`, `last_api_ok_at`, `last_cookie_ok_at`,
   `created_at`, `updated_at`. A Google account, not a channel. Linking one requires BOTH
   a Google OAuth grant and a cookie jar. `status` is the link health shown on the
-  Accounts page (the value set is provisional; it includes an auth-lost state that the
-  error policy sets on the first confirmed 401 / invalid cookie).
+  Accounts page: `pending` | `ok` | `auth_lost` | `cookies_invalid` | `disabled`
+  (`domain/accountStore.ts`; the migration default `new` reads as `pending`). The error
+  policy sets `auth_lost` on the first confirmed 401 and `cookies_invalid` when the jar
+  fails validation; both stay until the credential is replaced. The owner can only set
+  `disabled` (pause) or `pending` (resume, which recomputes the status from the stored
+  credentials). `scrape_budget_per_hour` NULL means the global
+  `quota.scrape_requests_per_hour` applies. The API row (`AccountRow`) adds a derived
+  `has_cookies` and leaves out `google_sub` and `api_quota_reserved`.
 - `account_secrets`: `account_id`, `kind` (`oauth_refresh` | `cookies`), `ciphertext`,
   `iv`, `tag`, `updated_at`. AES-256-GCM via `security/secrets.ts`. One row per
   (account, kind). Secrets are write-only: API responses carry presence booleans and
   last-ok timestamps, never the secret.
-- `proxies`: `id`, `label`, URL stored encrypted (`url_ciphertext`, `url_iv`, `url_tag`,
-  same scheme as `account_secrets`), `enabled`, `fail_count`, `skipped_until`.
-  (The spec abbreviates this table's encrypted columns; the three-column scheme is
-  provisional.)
+- `proxies`: `id`, `label` (UNIQUE), `url_blob`, `url_redacted`, `enabled`, `fail_count`,
+  `skipped_until`, `created_at`, `updated_at` (migration 002). The URL, which may carry
+  credentials, is ONE AES-256-GCM blob (`url_blob` = IV || tag || ciphertext, via
+  `security/secrets.ts`), not three columns like `account_secrets`. `url_redacted` is the
+  `scheme://host:port` form shown in the UI; the full URL is never returned. Accepted
+  schemes: http, https, socks4, socks4a, socks5, socks5h.
 
 ### Channels and videos
 
 - `channels`: `id` (= `UC...`), `title`, `handle`, `uploads_playlist_id`,
   `thumbnail_url`, `first_seen_at`, `last_checked_at`.
-- `channel_sources`: `channel_id`, `account_id` (nullable), `kind` (`subscription` |
-  `manual`), `subscribed_at`, `created_at`. Manual rows have `account_id` NULL and use
-  the `download_accounts` default `any`.
+- `channel_sources`: `id`, `channel_id`, `account_id` (nullable), `kind` (`subscription`
+  | `manual`), `subscribed_at`, `created_at`. Manual rows have `account_id` NULL and use
+  the `download_accounts` default `any`. Dedupe is a UNIQUE index on
+  `(channel_id, COALESCE(account_id, 0), kind)`, so NULL account ids collapse.
 - `videos`: `id` (11-char YouTube id), `channel_id`, `title`, `description`,
   `upload_date`, `published_at`, `duration_s`, `type` (`video` | `short` | `livestream`
   | `premiere`), `live_status`, `privacy` (`public` | `unlisted` | `private` |
   `removed` | `unavailable`), `gone_since`, `consecutive_recheck_failures`, `views`,
-  `likes`, `comments`, `ryd_dislikes`, `ryd_ratio`, `tags` (json), `category_id`,
+  `likes`, `comments`, `ryd_dislikes`, `ryd_ratio`, `tags_json`, `category_id`,
   `default_language`, `caption_available`, `max_height`, `has_av1`, `has_vp9`,
-  `has_h264`, `max_fps`, `is_hdr`, `formats_json`, `last_recheck_at`, `next_recheck_at`,
-  `recheck_tier`, `created_at`, `updated_at`. "Gone" means private or removed.
-- `video_sources`: `video_id`, `account_id` (nullable), `source` (`history` |
+  `has_h264`, `max_fps`, `is_hdr`, `formats_json`, `content_signature` (a hash of the
+  `contentDetails` fields that reveal a re-edit), `last_recheck_at`, `next_recheck_at`,
+  `recheck_tier`, `created_at`, `updated_at`. "Gone" means private, removed or
+  unavailable, or marked gone by rechecks (`gone_since`).
+- `video_sources`: `id`, `video_id`, `account_id` (nullable), `source` (`history` |
   `watch_later` | `liked` | `subscription` | `channel`), `first_seen_at`,
   `last_seen_at`, `source_ts` (nullable; the real watch/like/add time when known),
-  `origin` (`live_feed` | `api` | `takeout`). PK `(video_id, account_id, source)`.
-  Implementer note: SQLite treats NULLs as distinct inside a PRIMARY KEY of a rowid
-  table, so a NULL `account_id` (manual channels) does not collide by itself. The
-  implementer must make the uniqueness hold for NULL `account_id` (for example a unique
-  index over `coalesce(account_id, 0)`) and record the choice. The same applies to
-  `channel_sources`.
+  `origin` (`live_feed` | `api` | `takeout`). Rows carry a surrogate `id`; dedupe is a
+  UNIQUE index on `(video_id, COALESCE(account_id, 0), source)`. SQLite treats NULLs as
+  distinct in a plain UNIQUE constraint, so the COALESCE makes a NULL `account_id`
+  (manual channels) collapse to one row per video and source. `channel_sources` uses
+  the same technique.
 - `video_changes`: `id`, `video_id`, `recheck_id`, `field`, `old_json`, `new_json`,
   `seen_at`. THE one history store (see "Metadata history and rechecks"). `recheck_id`
   is the `jobs.id` of the `recheck_batch` run that observed the diff (provisional; the
   spec names the column but no separate table).
 - `video_stats`: `video_id`, `at`, `views`, `likes`, `comments`, `ryd_dislikes`. A
   derived chart index; see "Metadata history and rechecks" for its status.
-- `thumbnails`: `video_id`, `variant`, `url`, `sha256`, `path`, `first_seen_at`. Every
-  distinct URL/hash is stored.
-- `videos_fts`: FTS5 external-content table over `title`, `description`, channel title,
-  `tags`, kept in sync with triggers. Queried with `bm25` ranking and prefix queries.
+- `thumbnails`: `id`, `video_id`, `variant`, `url`, `sha256`, `path`, `first_seen_at`;
+  UNIQUE `(video_id, variant, sha256)`. Every distinct URL/hash is stored.
+- `videos_fts`: contentless FTS5 table (`content = ''`, tokenizer `unicode61
+  remove_diacritics 2`) with columns `id` (UNINDEXED), `title`, `description`,
+  `channel_title`, `tags`, keyed by the video's rowid and kept in sync by insert, delete
+  and update triggers. The channel title is joined at trigger time, so a channel rename
+  needs a domain-level reindex of that channel's videos. Queried with `bm25` ranking and
+  prefix queries.
 
 ### Media and locations
 
@@ -245,21 +289,28 @@ JSON, validated by a shared zod schema on write.
   by captions/info rows), `rel_path`, `size_bytes`, `sha256`, `vcodec`, `acodec`,
   `height`, `fps`, `bitrate`, `lang` (nullable), `downloaded_at`, `transcoded_from`
   (nullable), `created_at`.
-- `locations`: `id`, `label`, `container_path`, `quota_bytes`, `enabled`, `used_bytes`
-  (cached), `fs_free_bytes` (cached), `created_at`, `updated_at`. A location is a
-  compose bind mount (container path) plus this row.
+- `locations`: `id`, `label` (UNIQUE), `container_path` (UNIQUE), `quota_bytes` (0 =
+  unlimited until set), `enabled`, `used_bytes`, `fs_free_bytes`, `created_at`,
+  `updated_at`. A location is a compose bind mount (container path) plus this row. The
+  two cached columns exist, but the API row (`LocationRow`) computes both live:
+  `used_bytes` is the sum of the current media sizes in the location, `fs_free_bytes`
+  comes from statfs, and `mounted` (directory exists and is writable) is derived.
+  Migration 001 seeds one location, `media` -> `/media`.
 
 ### Rules and evaluation results
 
 - `rules`: `id`, `kind` (`global` | `custom` | `video`), `video_id` (nullable; set for
   `video` rules), `position` (int, custom ordering), `name`, `enabled`,
-  `condition_json` (the AST; NULL for global/video rules), `effects_json` (sparse map of
-  effect key -> value), `created_at`, `updated_at`.
-- `video_effective`: `video_id`, `effective_json`, `matched_rule_ids` (json),
-  `evaluated_at`, `next_eval_at`, `reclaim_priority`, `location_id`, `include`.
-  `effective_json` holds the merged effect values and the per-key provenance (which
-  rule set each key); `reclaim_priority`, `location_id` and `include` are denormalized
-  for the reaper, mover and download scheduling.
+  `condition_json` (the AST; NULL for global/video rules; a custom rule always carries
+  one, match-all being an empty `and` group), `effects_json` (sparse map of effect key ->
+  value), `created_at`, `updated_at`. A partial UNIQUE index allows one `video` rule per
+  `video_id`.
+- `video_effective`: `video_id`, `effective_json`, `provenance_json`, `matched_rule_ids`
+  (json), `evaluated_at`, `next_eval_at`, `reclaim_priority`, `location_id`, `include`.
+  `effective_json` holds the merged effect values and `provenance_json` the per-key
+  provenance (the id of the rule that set each key, or `"default"`); `reclaim_priority`,
+  `location_id` and `include` are denormalized for the reaper, mover and download
+  scheduling.
 - `rule_notify_counts`: `rule_id`, `video_id`, `count`. Backs the `notify.max_times`
   limit.
 
@@ -280,13 +331,22 @@ JSON, validated by a shared zod schema on write.
 
 - `share_links`: `token` (PK), `video_id`, `expires_at` (nullable; NULL = never),
   `revoked_at` (nullable), `access_count`, `last_access_at`, `created_at`.
-- `quota_usage`: `account_id`, `day`, `api_units`, `scrape_requests`.
-- `stats_daily`: `day`, `location_id` (nullable), `bytes_used`, `downloads`, `catalog`,
-  `gone`, `api_units`. The pre-aggregated source of the charts.
+- `quota_usage`: `account_id`, `day`, `api_units`, `scrape_requests`; PK `(account_id,
+  day)`. `account_id` 0 = project wide: Google's quota is per Cloud project, so every API
+  call is charged to its account row AND to row 0, and the daily budget is enforced
+  against row 0. `day` is `YYYY-MM-DD` in UTC; the per-account scrape counters use hour
+  rows in the same table, keyed `YYYY-MM-DDTHH`.
+- `stats_daily`: `day`, `location_id` (NOT NULL; 0 = all locations), `bytes_used`,
+  `downloads`, `catalog`, `gone`, `api_units`; PK `(day, location_id)`. The
+  pre-aggregated source of the charts.
 - `checks`: `id`, `run_at`, `trigger`, `results_json`, `ok`. Self-check history.
-- `settings`: `key`, `value_json`. The global settings registry store (amber pattern).
-- `kv`: `key`/`value` pairs. Holds `installed_at` (written at first DB init; anchors the
-  7-day subscription backfill guard), the VAPID keypair, tool versions, and similar.
+- `settings`: `key`, `value_json`, `updated_at`. The sparse global settings store (amber
+  pattern): only keys the owner changed are stored.
+- `kv`: `key`, `value_json`, `updated_at`; every value is JSON. Holds `installed_at`
+  (written at first DB init; anchors the 7-day subscription backfill guard), the VAPID
+  keypair (`vapid`), `tool_versions`, single-use OAuth `oauth_state:*` rows, proxy
+  round-robin cursors (`proxy_rr:*`), scheduler last-run times (`schedule_last:*`), and
+  similar.
 
 ## Rules, effects and merge
 
@@ -303,7 +363,7 @@ order, and a registry of effect keys that every rule layer draws from.
 - `video` (highest): at most one per video id, no condition (`video_id` set). Created
   from the Inspect page, the video detail page, and the trash action.
 
-### Effects registry (`shared/src/effects.ts`)
+### Effects registry (`shared/src/rules/effects.ts`)
 
 Each effect key declares a zod schema, a default, `allowedIn: ["global", "custom",
 "video"]` and UI metadata (group, label, control). The spec restricts exactly one key:
@@ -313,12 +373,12 @@ Each effect key declares a zod schema, a default, `allowedIn: ["global", "custom
 | --- | --- | --- | --- |
 | `include` | bool | `true` | custom, video (NOT global) |
 | `reclaim_priority` | int >= -1 | `-1` | global, custom, video |
-| `location_id` | location id | first location | global, custom, video |
+| `location_id` | location id or null | null (= first enabled location) | global, custom, video |
 | `media_mode` | `video` \| `audio_only` \| `captions_only` \| `metadata_only` | `video` | global, custom, video |
 | `format_policy` | `prefer_av1` \| `prefer_vp9` \| `prefer_h264` \| `best` | `prefer_av1` | global, custom, video |
 | `max_height` | int (pixels) | unset (no cap) | global, custom, video |
 | `max_fps` | int | unset (no cap) | global, custom, video |
-| `transcode` | object, see below | `{ mode: if_not_av1, codec: hevc_nvenc, cq: 28, preset: p5, audio_codec: copy }` | global, custom, video |
+| `transcode` | object, see below | `{ mode: if_not_av1, codec: hevc_nvenc, quality: 28, preset: p5, audio_codec: copy }` | global, custom, video |
 | `captions` | `{ enabled, languages: string[] \| "all", auto_generated: bool }` | `{ enabled: true, languages: "all", auto_generated: true }` | global, custom, video |
 | `ytdlp` | `{ format_override?, rate_limit_bytes_per_s?, sleep_requests_min?, sleep_requests_max?, concurrent_fragments?, extra_args_allowlisted? }` | all fields unset (global settings apply) | global, custom, video |
 | `download_accounts` | `sourcing` \| `any` \| account ids[] | `sourcing` | global, custom, video |
@@ -326,7 +386,7 @@ Each effect key declares a zod schema, a default, `allowedIn: ["global", "custom
 | `delay_after_upload` | duration | unset (no delay) | global, custom, video |
 | `recheck_interval` | `tiered` \| duration | `tiered` | global, custom, video |
 | `live` | `vod_only` \| `record_live` | `vod_only` | global, custom, video |
-| `notify` | `{ enabled, max_times: int \| null, channel: push }` | `{ enabled: false }` | global, custom, video |
+| `notify` | `{ enabled, max_times: int \| null, channel: push }` | `{ enabled: false, max_times: 1, channel: push }` | global, custom, video |
 
 Details that are part of the contract:
 
@@ -340,15 +400,19 @@ Details that are part of the contract:
   value moves the media; it never re-downloads (see "Media pipeline"). The default
   "first location" is resolved at evaluation time to the lowest-id enabled location.
 - `transcode`: `{ mode: none | if_not_av1 | always, codec: hevc_nvenc | h264_nvenc |
-  av1_svt | av1_nvenc, quality: crf/cq int, preset, max_video_bitrate_kbps?,
-  audio_codec, audio_bitrate_kbps }`. `av1_nvenc` is only offered when the hardware
+  av1_svt | av1_nvenc, quality: 0-63 (CQ for NVENC, CRF for SVT-AV1), preset,
+  max_video_bitrate_kbps?, audio_codec: copy | aac | opus, audio_bitrate_kbps? }`. Every
+  subfield has a schema default, so a sparse object parses to a complete one. `av1_nvenc`
+  is only offered when the hardware
   allows it (the NAS GPU does not). `hevc_nvenc` / `h264_nvenc` are offered in the rule
   UI only when NVENC is detected. Software `av1_svt` is a rule option, not the default.
 - `captions`: WebVTT. Default is all manual subtitle languages plus auto-generated for
   the video's language. A default rule narrows this to English (see "Default rule set").
   `captions_only` and `audio_only` combine: audio-only media with captions enabled
   downloads both.
-- `ytdlp.extra_args_allowlisted`: only flags from the server-side allowlist are
+- `ytdlp.extra_args_allowlisted`: only flags from the allowlist
+  (`YTDLP_EXTRA_ARGS_ALLOWLIST` in `shared/src/rules/effects.ts`, written `--flag` or
+  `--flag=value`; nothing that runs commands, touches paths or carries credentials) are
   accepted; anything else is rejected at validation time.
 - `download_accounts`: `sourcing` = the account(s) that sourced the video, round-robin
   across them; an explicit list or `any` is allowed. For manually added channels (no
@@ -359,8 +423,9 @@ Details that are part of the contract:
   older) or a fixed duration. Pri-0 videos only recheck on leftover budget regardless.
 - `live`: `vod_only` tracks live/upcoming videos, polls, and downloads when the VOD is
   published; `record_live` records with `--live-from-start`. Off by default.
-- `notify`: notify up to `max_times` (or unlimited when null) per video while the video
-  meets the rule; counts live in `rule_notify_counts`. Delivery is Web Push.
+- `notify`: notify up to `max_times` (1-1000, or unlimited when null; default 1) per
+  video while the video meets the rule; counts live in `rule_notify_counts`. Delivery is
+  Web Push.
 
 Global-only settings (storage budgets, GPU/hardware access, scheduler cadences, error
 thresholds, and so on) are NOT rule effects; they live in the `settings` table and the
@@ -375,12 +440,17 @@ Evaluation merges layers in this order, per video:
 3. Apply each matching, enabled `custom` rule in ascending `position` (a later rule has
    higher priority). A rule overrides only the effect keys it sets. Values replace at
    effect-key granularity: a rule that sets `captions` supplies the whole `captions`
-   value, and any field it omits takes the schema's field default.
+   value, and any field it omits takes the schema's field default. Object-valued effects
+   (`transcode`, `captions`, `ytdlp`, `notify`) are never deep-merged.
 4. Apply the `video` rule for this video id.
 
 The result PLUS provenance (which rule set each key) is stored in `video_effective` and
 shown on the Inspect page. `matched_rule_ids` lists the global rule, every matching
-custom rule and the video rule. A key that no rule set reports provenance "default".
+custom rule (in priority order) and the video rule; a disabled rule is skipped in every
+layer. Provenance is the id of the rule that set the key; a key that no rule set
+reports provenance "default". An effect a rule's kind may not set (`include` on the
+global rule) is ignored by the merge. `location_id` stays null in the merge result; the
+server substitutes the lowest-id enabled location.
 
 Evaluation is triggered:
 
@@ -395,66 +465,81 @@ the thresholds); the hourly pass is the safety net.
 
 ### Global settings (`shared/src/settingsRegistry.ts`)
 
-Amber pattern: each key declares a zod schema, a default, allowed scopes (here only
-`global`) and UI metadata. `GET /api/settings` returns the sparse overrides stored; `PUT`
-takes the same shape and a null value clears an override. Unknown keys are rejected as
-a whole. The spec fixes the defaults below but names none of the identifiers: the key
-names are PROVISIONAL (assigned by this document) until an implementer records the
-final names in the registry and updates this table.
+Amber pattern: each key declares a zod schema, a default and UI metadata (one scope,
+`global`). Keys are dotted `group.name` strings. Storage is sparse: `GET /api/settings`
+answers `{ overrides }` with only the keys the owner changed, and `PUT` takes the sparse
+patch ITSELF as the body (a `{ patch: {...} }` wrapper is also accepted; no setting is
+named `patch`) and answers the new `{ overrides }`. A null value clears an override.
+Unknown keys reject the whole patch with a 400 (`details.fields` and `details.errors`
+map key -> message), as do cross-key violations: `reaper.low_water_pct` must be below
+`reaper.high_water_pct`, `download.sleep_requests_min_s` must not exceed the max, and
+`recheck.daily_under_days` must not exceed `recheck.weekly_under_days`. A stored value
+that no longer validates reads as the default. `tools.pot_provider_url` defaults to the
+env `POT_PROVIDER_URL` while not overridden. The table records the final names, which
+replace the provisional ones this document first assigned.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `eval_interval_minutes` | 60 | Full rule-evaluation pass interval |
-| `ingest_history_interval_minutes` | 30 | History feed per account |
-| `ingest_watch_later_interval_minutes` | 30 | Watch Later feed per account |
-| `ingest_liked_interval_minutes` | 30 | Liked playlist per account |
-| `ingest_subscriptions_interval_minutes` | 360 | Subscriptions list per account |
-| `ingest_channel_uploads_interval_minutes` | 30 | Newest 50 uploads per channel |
-| `ingest_channel_uploads_page_size` | 50 | Newest uploads read per channel poll |
-| `manual_channel_full_scan_interval_hours` | 24 | Full scan of manual channels until caught up |
-| `recheck_tier_daily_max_age_days` | 30 | Daily recheck below this video age |
-| `recheck_tier_weekly_max_age_days` | 365 | Weekly below this, monthly above |
-| `api_daily_unit_budget` | 10000 | Google API units per day |
-| `scrape_budget_per_hour` | unset (per-account column `accounts.scrape_budget_per_hour`) | Self-imposed requests/hour per account |
-| `max_concurrent_downloads` | 2 | `download` worker pool size |
-| `max_concurrent_transcodes` | 1 | `transcode` worker pool size |
-| `download_speed_limit_bytes_per_s` | unset (no cap) | yt-dlp `--limit-rate` default |
-| `account_min_gap_seconds` | 30 | Minimum gap between yt-dlp runs per account |
-| `sleep_requests_min_seconds` / `sleep_requests_max_seconds` | 1 / 3 | yt-dlp `--sleep-requests` |
-| `reaper_high_water_pct` | 95 | Start reaping at this % of quota |
-| `reaper_low_water_pct` | 90 | Free down to this % of quota |
-| `reaper_min_free_bytes` | 10 GB | Also start reaping when the FS has less free than this |
-| `ryd_enabled` | true | Return YouTube Dislike lookups |
-| `pot_provider_url` | `http://bgutil:4416` | PO-token sidecar (env `POT_PROVIDER_URL` seeds it) |
-| `proxy_apply_to_api` | false | Also route YouTube API calls through the proxy |
-| `proxy_skip_minutes` | 10 | A failing proxy is skipped this long |
-| `proxy_fail_notify_after` | 3 | Consecutive failures before a notification |
-| `job_log_retention_days` | 14 | Per-job log retention |
-| `job_log_cap_bytes` | 2 GB | Per-job log total cap |
-| `job_log_failed_retention_days` | 60 | Retention for failed jobs' logs |
-| `notify_download_failure_threshold` | 3 | Consecutive download failures across distinct videos |
-| `notify_rate_limit_hours` | 6 | Per notification type, unless acknowledged |
-| `canary_max_per_hour` | 1 | Canary download budget |
-| `recheck_outage_notify_hours` | 6 | "Recheck pass failed" rate limit |
-| `bulk_download_warn_bytes` | 20 GB | UI warning threshold, no cap |
-| `share_rate_limit_per_minute` | implementer's call | Per-IP limit on `/s` |
-| `backfill_guard_days` | 7 | Used by the default guard rule (rule 4) |
-| `selfcheck_interval_hours` | 24 | Self-check cadence |
-| `tool_update_check_interval_hours` | 24 | yt-dlp / ffmpeg update check |
+| `eval.interval_minutes` | 60 | Full rule-evaluation pass interval |
+| `ingest.history_minutes` | 30 | History feed per account |
+| `ingest.watch_later_minutes` | 30 | Watch Later feed per account |
+| `ingest.liked_minutes` | 30 | Liked playlist per account |
+| `ingest.subscriptions_hours` | 6 | Subscriptions list per account |
+| `ingest.channel_uploads_minutes` | 30 | Newest uploads per channel |
+| `ingest.channel_newest_n` | 50 | Newest uploads read per channel poll (1-500) |
+| `ingest.manual_channel_full_scan_hours` | 24 | Full scan of manual channels until caught up (leftover budget) |
+| `recheck.daily_under_days` | 30 | Daily recheck below this video age |
+| `recheck.weekly_under_days` | 365 | Weekly below this, monthly above |
+| `recheck.ryd_enabled` | true | Return YouTube Dislike lookups |
+| `quota.api_units_per_day` | 10000 | Google API units per day |
+| `quota.scrape_requests_per_hour` | 120 | Self-imposed yt-dlp requests/hour per account; `accounts.scrape_budget_per_hour` overrides it when not NULL |
+| `download.concurrency` | 2 | `download` worker pool size (1-16) |
+| `transcode.concurrency` | 1 | `transcode` worker pool size (1-8) |
+| `download.rate_limit_bytes_per_s` | null (no cap) | yt-dlp `--limit-rate` default |
+| `download.account_gap_seconds` | 30 | Minimum gap between downloads per account |
+| `download.sleep_requests_min_s` / `download.sleep_requests_max_s` | 1 / 3 | yt-dlp `--sleep-requests` |
+| `reaper.high_water_pct` | 95 | Start reaping at this % of quota |
+| `reaper.low_water_pct` | 90 | Free down to this % of quota |
+| `reaper.min_free_gb` | 10 | Also start reaping when the FS has less free than this |
+| `notify.consecutive_download_failures` | 3 | Consecutive download failures across distinct videos |
+| `notify.rate_limit_hours` | 6 | Per notification type, unless acknowledged |
+| `notify.storage_pressure_hours` | 6 | Storage pressure repeat interval |
+| `notify.outage_hours` | 6 | "Recheck pass failed" repeat interval |
+| `canary.max_per_hour` | 1 | Canary download budget |
+| `logs.job_retention_days` | 14 | Per-job log retention |
+| `logs.job_retention_gb` | 2 | Per-job log total cap |
+| `logs.failed_job_retention_days` | 60 | Retention for failed jobs' logs |
+| `tools.auto_update` | true | Swap in verified yt-dlp / ffmpeg releases; when off, updates are only checked |
+| `tools.pot_provider_url` | `http://bgutil:4416` | PO-token sidecar (env `POT_PROVIDER_URL` seeds it); empty disables |
+| `tools.js_runtime` | `node` | yt-dlp `--js-runtimes` value (`node`, `deno`, `bun`, `quickjs`) |
+| `selfcheck.interval_hours` | 24 | Self-check cadence |
+| `bulk.warn_gb` | 20 | UI warning threshold for bulk downloads, no cap |
+| `thumbnails.variants` | all six variants | Thumbnail variants to fetch, hash and keep on change |
 
-## Rule AST (`shared/src/ruleAst.ts`)
+Spec items that are constants in code, not settings: the proxy skip window (10 minutes
+after 3 consecutive failures, `domain/proxies.ts`), the `/s` rate limit (120 per minute
+per IP, `public/share.ts`), the tool update cadence (daily, the first run 5 minutes
+after boot, `media/tools.ts`) and the scheduler tick (5 s). The 7-day backfill guard is
+the duration in default rule 4, not a setting. The spec's "also route API calls through
+the proxy" switch (`proxy_apply_to_api`) is not in the registry yet.
+
+## Rule AST (`shared/src/rules/ast.ts`)
 
 A condition is a JSON tree validated by a shared zod schema (the same schema validates
 `POST /api/rules`, `PUT /api/rules/:id` and `POST /api/rules/preview`):
 
 ```
 Group = { type: "group", op: "and" | "or", not?: boolean, children: Node[] }
-Leaf  = { type: "cond", field, op, value }
+Leaf  = { type: "cond", field, op, value, ci?, source? }
 Node  = Group | Leaf
 ```
 
 A group with `not: true` negates its combined result. An empty `and` group matches
-everything ("match all"); an empty `or` group matches nothing.
+everything ("match all"); an empty `or` group matches nothing. `ci` is accepted only on
+text leaves and `source` only on `first_seen` leaves; every (field, op) pair has its own
+value schema and unknown keys are rejected. `validateAst` bounds the tree before zod
+recurses (depth 16, 500 nodes) and reports every problem with a JSON pointer; text
+operands are at most 1000 characters and lists at most 500 entries.
 
 ### Fields and operators
 
@@ -479,68 +564,96 @@ everything ("match all"); an empty `or` group matches nothing.
 | `downloaded` | `eq` | bool |
 | `current_location` | `eq` | location id |
 | `title`, `description`, `tags`, `channel_title` | `contains`, `not_contains`, `starts_with`, `ends_with`, `eq` (each with a `ci` case-insensitive flag), `regex`, `not_regex` | string |
-| `upload_date`, `first_seen`, `downloaded_at`, `last_seen`, `now` | `age_gt`, `age_lt`, `before`, `after`, `is_null` | duration (ISO-8601 or `{days, months, years}`) for `age_*`; absolute datetime for `before`/`after` |
+| `upload_date`, `first_seen`, `downloaded_at`, `last_seen`, `now` | `age_gt`, `age_lt`, `before`, `after`, `is_null` | duration (ISO-8601 or `{years?, months?, days?, hours?}`) for `age_*`; instant (epoch ms or ISO-8601 datetime with offset) for `before`/`after`; boolean for `is_null` |
 | `upload_date` | additionally `before_install_minus` | duration X |
 
 Notes:
 
-- `regex` / `not_regex` carry a safe-regex guard (length limit and a `re2`-style check
-  or a timeout via worker) so a pathological pattern cannot stall evaluation.
+- `regex` / `not_regex` carry a safe-regex guard (`shared/src/rules/safeRegex.ts`).
+  `shared/` is synchronous, so there is no timeout or worker: a pattern is rejected at
+  validation if it is over 200 characters, has a backreference, a nested quantifier, an
+  ambiguous alternation under a quantifier, or more than 3 unbounded quantifiers, and
+  matching runs against text truncated to 4096 characters. An unsafe pattern never
+  matches (`regex` and `not_regex` are both false for it).
+- `tags` matches when any tag matches; `not_contains` / `not_regex` hold when no tag
+  matches.
 - `source` set semantics, over the set `S` of sources a video currently has:
   `has_any` = `S` intersects the list; `has_all` = list is a subset of `S`;
   `has_only` = `S` is non-empty and a subset of the list; `has_none` = `S` does not
-  intersect the list.
+  intersect the list. For a video with no sources, `has_only` is false and `has_none`
+  is true.
 - Time anchors available to conditions (all four): upload/publish date
   (`upload_date`); first seen in a given source, per video, source and account
   (`first_seen`); download completed at (`downloaded_at`); last seen in any source /
   last watched when known (`last_seen`). `now` is the evaluation clock.
-- `first_seen(source?)`: with a source (or a list of sources, as in the default rules'
-  `first_seen(subscription or channel)`) it is the earliest first-seen across those
-  sources; without one it is the earliest across all sources. The spec writes this as a
-  parametrised field; the leaf carries the parameter as an optional `arg` (provisional:
-  `Leaf = { type: "cond", field, arg?, op, value }` for `first_seen` only).
-- `age_gt` / `age_lt` compare `now - anchor` against the duration. `is_null` tests that
-  the anchor has no value (for example a never-downloaded video's `downloaded_at`).
+- `first_seen(source?)`: the `first_seen` leaf carries an optional single `source`
+  (`{ type: "cond", field: "first_seen", source?, op, value }`). With a source it is the
+  earliest first-seen among that source's rows; without one it is the earliest across
+  all sources. A list is not accepted: the spec's `first_seen(subscription or channel)`
+  is encoded as an OR group of two `first_seen` leaves, one per source (see rule 1
+  below); for `age_gt` that equals "the earliest of the two is older".
+- `age_gt` / `age_lt` compare `now - anchor` against the duration. `age_gt` is inclusive
+  (`now >= anchor + d`) and `age_lt` strict (`now < anchor + d`), so the two are exact
+  complements and `next_eval_at` can schedule the threshold instant itself. Months and
+  years are UTC calendar units (Jan 31 plus one month clamps to the end of February).
+  `before` and `after` are strict; `between` is inclusive and needs `[min, max]` with
+  min <= max. `is_null` takes a boolean and tests whether the anchor has no value (for
+  example a never-downloaded video's `downloaded_at`). Any other leaf over a missing
+  anchor, or over a null number, boolean or enum column, is false. `upload_date` falls
+  back to `published_at` when unknown.
+- `status`: `gone` holds when the privacy is `private`, `removed` or `unavailable`, or a
+  recheck set `gone_since`. A gone video's statuses are `gone` plus `private` or
+  `removed` when that is its privacy, so an `unavailable` video matches only `gone`;
+  otherwise the status is the privacy (`public` or `unlisted`).
 - `install_age`: `upload_date before installed_at - X` is expressed as `upload_date`
-  `before_install_minus` X, a helper operator so the default guard rule is a plain
-  leaf. `installed_at` comes from `kv`.
-- The spec lists operators for `has_codec`, `is_hdr`, `caption_available`,
-  `has_share_link`, `downloaded` and `current_location` only by field name, with
-  `current_location (eq)` explicit; the operator sets shown above for those fields are
-  the nearest family (bool -> `eq`, enum -> `eq`/`in`) and are provisional.
+  `before_install_minus` X (strict), a helper operator so the default guard rule is a
+  plain leaf. `installed_at` comes from `kv`.
+- The operator sets shown above are what `shared/src/rules/ast.ts` accepts, including
+  for `has_codec`, `is_hdr`, `caption_available`, `has_share_link`, `downloaded` and
+  `current_location` (bool -> `eq`, enum -> `eq`/`in`, `current_location` -> `eq`).
 - Duration shorthand in tables here (`14d`, `2 months`, `2 years`, `7d`) denotes the
   ISO-8601 forms (`P14D`, `P2M`, `P2Y`, `P7D`); stored ASTs use ISO-8601 or the
-  `{days, months, years}` object.
+  `{years?, months?, days?, hours?}` object (at least one key).
 
 ### Evaluation
 
 Evaluation is a pure function in `shared/`:
 
 ```
-evaluate(video, sourcesFor(video), context{ now, installed_at, shareLinkCount, media })
-  -> boolean
+evaluateCondition(node, video: VideoFacts, ctx: { now, installed_at }) -> boolean
 ```
 
-It is unit-tested exhaustively (every field, every operator, nested groups, NOT, empty
-groups, time-anchor edge cases, regex guard). `domain/ruleEval.ts` loads inputs and
-calls it; `domain/effective.ts` performs the merge and writes `video_effective`.
+`VideoFacts` is the `videos` row plus its `sources` rows, the current `media` fact
+(`downloaded_at`, `location_id`, `vcodec`) and `share_link_count` (active links); the
+context carries only the clock and the install time. It is unit-tested exhaustively
+(every field, every operator, nested groups, NOT, empty groups, time-anchor edge cases,
+regex guard). `domain/ruleEval.ts` loads inputs (building `VideoFacts`) and calls it.
+The merge is also pure and lives in `shared/` (`resolveEffective`), as does
+`next_eval_at` (`nextFlip.ts`: the soonest instant after `now` at which an `age_*`
+threshold, or a `before`/`after` on `now`, flips for the video); `domain/effective.ts`
+persists the result in `video_effective`.
 
-The rule list preview (`POST /api/rules/preview`) runs the same function over the
-catalog and answers a match count plus a sample.
+The rule list preview (`POST /api/rules/preview`, body `{ condition }`) runs the same
+function over the catalog and answers `{ count, total, sample: [{ id, title,
+channel_title }] }`.
 
 ## Default rule set
 
-Installed by migration at first init; all rules are editable and removable. Position
-ascending = priority ascending. `G` is the global rule.
+Installed at first init from `shared/src/rules/defaults.ts` (`DEFAULT_RULES`; the
+installer is not on main yet); all rules are editable and removable. Effects are stored
+parsed, so object effects carry their
+field defaults (rule 5's captions gain `enabled: true`, rule 7's notify gains
+`channel: push`). Position ascending = priority ascending (the global rule is position
+0). `G` is the global rule.
 
 | # | Name | Condition | Effects |
 | --- | --- | --- | --- |
-| G | Global defaults | - | reclaim_priority -1; location = first location; media_mode video; format_policy prefer_av1; transcode { mode if_not_av1, codec hevc_nvenc, cq 28, preset p5, audio copy }; captions { all, auto true }; live vod_only; download_accounts sourcing; proxy none; recheck tiered; notify off |
-| 1 | Expire: subscriptions after 2 weeks | source has_only [subscription, channel] AND first_seen(subscription or channel) age_gt 14d | reclaim_priority 0 |
+| G | Global defaults | - | reclaim_priority -1; location_id null (= first enabled location); media_mode video; format_policy prefer_av1; transcode { mode if_not_av1, codec hevc_nvenc, quality 28, preset p5, audio copy }; captions { all, auto true }; live vod_only; download_accounts sourcing; proxy none; recheck tiered; notify { enabled false, max_times 1, channel push } |
+| 1 | Expire: subscriptions after 2 weeks | source has_only [subscription, channel] AND (first_seen(source subscription) age_gt 14d OR first_seen(source channel) age_gt 14d) | reclaim_priority 0 |
 | 2 | Expire: watched after 2 months | source has_none [liked, watch_later] AND source has_any [history] AND first_seen(history) age_gt 2 months | reclaim_priority 0 |
 | 3 | Expire: liked after 2 years | source has_any [liked] AND source has_none [watch_later] AND first_seen(liked) age_gt 2 years | reclaim_priority 0 |
 | 4 | Guard: no subscription backfill older than 7 days before install | source has_only [subscription, channel] AND upload_date before_install_minus 7d | reclaim_priority 0 |
-| 5 | Captions: English only | (match all) | captions { languages [en], auto true } |
+| 5 | Captions: English only | (match all: an empty `and` group) | captions { languages [en], auto true } |
 | 6 | Keep unlisted and gone forever | status in [unlisted, gone] | reclaim_priority -1 |
 | 7 | Notify when a video goes gone | status eq gone | notify { enabled, max_times 1 } |
 
@@ -665,8 +778,8 @@ source of truth (provisional, see "Open technical calls").
 
 ### Google Takeout importer
 
-`POST /api/takeout` (multipart) accepts the Takeout `.zip` or individual
-`watch-history.json`, playlist CSVs and `subscriptions.csv`:
+`POST /api/takeout` (multipart) accepts the Takeout archive (`.zip` or `.tgz`) or
+individual `watch-history.json`, playlist CSVs and `subscriptions.csv`:
 
 - History entries -> `history` source with the real watch timestamp as `first_seen_at`
   (and `source_ts`); Watch Later / Liked playlists -> their sources; subscriptions ->
@@ -674,9 +787,13 @@ source of truth (provisional, see "Open technical calls").
 - Idempotent. Logged as an Activity row with counts.
 - Unknown videos are created as metadata-only records and queued for recheck; rules
   decide what happens next.
-- History JSON entries carry `titleUrl` (with the video id) and `time`. Entries without
-  `titleUrl` (ads, removed videos) are skipped and counted (provisional, see "Open
-  technical calls").
+- History JSON entries carry `titleUrl` (with the video id) and `time`. Entries that
+  yield no row are skipped and counted per reason (`shared/src/takeout.ts`): `ad` (a
+  "From Google Ads" entry, checked first because ads carry a real watch URL), `no-url`
+  (no `titleUrl`: removed or private videos), `not-a-video` (a post, channel or visit)
+  and `malformed-entry`; for CSVs, `invalid-video-id` and `invalid-channel-id`. The
+  counts go into the Activity row. Rows are not deduplicated by the parsers (a video
+  watched three times is three history rows); idempotency belongs to the importer.
 
 The parsers are pure (in `shared/` or `domain/takeout.ts`) and unit-tested on synthetic
 fixtures.
@@ -704,9 +821,13 @@ gap, the global concurrency (2), proxy selection, `delay_after_upload` and live 
   `--sleep-requests`, `--limit-rate`, `--write-info-json`, `--write-subs
   --write-auto-subs --sub-langs <list> --sub-format vtt --convert-subs vtt`,
   `--write-all-thumbnails`, `--no-overwrites`, `-o` into
-  `<location>/.tmp/<videoId>/`, `--print-json`, the PO-token provider extractor-arg
-  when configured, and the JS runtime flag (Node is in the image; the exact flag is
-  verified against the installed yt-dlp's `--help`).
+  `<location>/.tmp/<videoId>/`, `--print-json`, and the tool flags below. Every yt-dlp
+  run (`media/exec.ts`) gets `--plugin-dirs <CELLAR_YTDLP_PLUGIN_DIRS>` (the bgutil
+  plugin, default `/opt/cellar/yt-dlp-plugins`) and `--js-runtimes <tools.js_runtime>`
+  (default `node`; passed only when the installed yt-dlp's `--help` advertises it). When
+  a PO-token provider URL is configured the download job is to pass `--extractor-args
+  youtubepot-bgutilhttp:base_url=<url>` (the form recorded in the Dockerfile; the
+  download job is not on main yet).
 - On success: the non-media sidecars (info json, vtt, thumbnails) move from the
   location's `.tmp/` to `/data/meta/<channelId>/<videoId>/`; fsync; the video/audio file
   is atomically renamed into `<location>/<channelId>/<videoId>/`; `media` rows are
@@ -784,8 +905,9 @@ becomes `versions/v<N>/` (`is_current = 0`) and stays until reaped as part of th
 
 ### Thumbnails and captions
 
-Thumbnail variants fetched (provisional): `maxresdefault`, `sddefault`, `hqdefault`,
-`mqdefault`, `default` (+ `hq720`). Each is hashed (sha256) and stored on change only,
+Thumbnail variants are the `thumbnails.variants` setting (default all of `maxresdefault`,
+`sddefault`, `hqdefault`, `mqdefault`, `default` and `hq720`; at least one). Each is
+hashed (sha256) and stored on change only,
 under `/data/meta/<channelId>/<videoId>/thumbnails/<variant>-<sha>.jpg`, with a
 `thumbnails` row. Captions are WebVTT files `<lang>.vtt` in the same meta directory,
 with `media(kind = captions, lang)` rows. Default languages: all manual subtitle
@@ -825,14 +947,16 @@ Everything that must survive a media delete and stay out of the quota lives unde
 `/data`:
 
 ```
-/data/cellar.db (+ -wal, -shm)                          # state DB
+/data/state/cellar.db (+ -wal, -shm)                    # state DB (dir is 0700)
 /data/meta/<channelId>/<videoId>/info.json
 /data/meta/<channelId>/<videoId>/<lang>.vtt             # captions
 /data/meta/<channelId>/<videoId>/thumbnails/<variant>-<sha>.jpg
-/data/bin/                                              # yt-dlp, ffmpeg, ffprobe (+ previous)
+/data/bin/                                              # yt-dlp, ffmpeg, ffprobe, <tool>.prev,
+                                                        #   .staging/ during an update
 /data/logs/cellar.log                                   # pino-roll application log
 /data/logs/jobs/<jobId>/                                # per-job debug data
-/data/tmp/                                              # 0600 cookie temp files
+/data/tmp/                                              # 0600 cookie temp files (dir is 0700)
+/data/cache/                                            # XDG_CACHE_HOME (HOME is /data)
 ```
 
 Stable ids only, no titles in paths. Human-readable names live in the DB/UI and in
@@ -842,12 +966,15 @@ download filenames. `captions_only` / `metadata_only` modes therefore need no lo
 
 Two budgets are tracked and enforced, both configurable:
 
-- Google API unit budget: 10,000 units/day by default (the Cloud project default),
-  tracked in `quota_usage.api_units` per account per day. Units are charged per call by
-  Google's table (`videos.list` with 50 ids = 1 unit; `playlistItems.list`,
-  `subscriptions.list`, `channels.list` per Google's table).
-- A self-imposed per-account scrape budget (requests/hour, `accounts.
-  scrape_budget_per_hour`), tracked in `quota_usage.scrape_requests`, plus a 30 s
+- Google API unit budget: `quota.api_units_per_day`, 10,000 by default (the Cloud project
+  default). Usage is tracked in `quota_usage.api_units` per account per UTC day and on
+  the project-wide row (`account_id` 0), which the budget is enforced against. Units are
+  charged per call by Google's table (`videos.list` with 50 ids = 1 unit;
+  `playlistItems.list`, `subscriptions.list`, `channels.list` per Google's table). A
+  spent budget raises `quota_exhausted` (HTTP 429).
+- A self-imposed per-account scrape budget (requests/hour: `accounts.
+  scrape_budget_per_hour`, else `quota.scrape_requests_per_hour`, default 120), tracked
+  in `quota_usage.scrape_requests` on hour rows (`day` = `YYYY-MM-DDTHH`), plus a 30 s
   minimum gap between yt-dlp runs per account and `--sleep-requests` 1-3 s.
 
 Budget classes: live work (live feeds, rechecks of non-zero-priority videos,
@@ -873,9 +1000,9 @@ the API exposes that differs on a recheck (description, length, privacy, tags,
 category, formats, thumbnails URL, ...) is a tracked field. Every distinct thumbnail
 URL/hash is saved to disk; every distinct title is retained via the diffs.
 
-`video_stats` is a derived chart index. It exists only as an index rebuilt from
-`video_changes`; if the charts can query `video_changes` fast enough, the table is
-dropped (provisional, planner's call; recorded in "Open technical calls").
+`video_stats` is a derived chart index and is kept (migration 003 creates it). It is
+rebuildable from `video_changes` and is never a second source of truth (decided; see
+"Open technical calls").
 
 ### Recheck cadence
 
@@ -893,8 +1020,8 @@ A manual "Refresh and recheck all" rechecks every video.
   unlisted/private/removed/unavailable as the API says). Private vs removed vs
   region-blocked are distinguished when the API says so.
 - Any API error for the WHOLE batch is an outage signal, not a per-video failure.
-- Diffs go into `video_changes`; counters into `video_stats` (if kept); an RYD lookup is
-  made; thumbnail variants are hashed and stored on change.
+- Diffs go into `video_changes`; counters into `video_stats`; an RYD lookup is made;
+  thumbnail variants are hashed and stored on change.
 - A pass that fails everything is an outage: no per-video notifications, one "recheck
   pass failed" error notification (rate-limited to once per 6 h).
 
@@ -912,33 +1039,57 @@ One `Scheduler` (amber shape), `server/src/jobs/scheduler.ts`:
 - A persistent `jobs` table plus an in-memory min-heap. On boot the scheduler reloads
   queued/running jobs; jobs that were running are requeued. Natural dedupe: one video =
   one `download` job.
-- Worker pools per class: `io` (API calls and feeds), `download` (2), `transcode` (1),
-  `maintenance` (1).
+- Worker pools per class: `io` (API calls and feeds, 4), `download`
+  (`download.concurrency`, default 2), `transcode` (`transcode.concurrency`, default 1),
+  `maintenance` (1) and `leftover` (pri-0 rechecks and deep backfill; it runs only while
+  the quota gate says the main classes left budget unused). A job type is a string
+  registered with a handler (`registerHandler(type, { class, handler, maxAttempts?,
+  dedupeKey? })`, `maxAttempts` default 3); a queued row whose type has no handler is
+  never claimed. Without a `dedupeKey`, `enqueue({ dedupe: true })` dedupes on type plus
+  video id, or type plus account id when there is no video. Higher `priority` runs first.
 - Per-account token buckets (the 30 s gap and the scrape budget), the quota gate
-  (budget classes), a circuit breaker per class, and exponential backoff with jitter
-  persisted in `run_after`.
-- SSE `job.*` events on the `/api/events` bus; graceful SIGTERM: finish or requeue
-  running jobs.
-- Tick every 5 s. Hourly: eval pass -> reap. Daily: tool update check, self-check,
-  stats rollup, log retention.
+  (budget classes), a circuit breaker per class (5 consecutive failures open it for 5
+  minutes, then one half-open probe), and exponential backoff persisted in `run_after`:
+  `attempts^2 * 30 s`, capped at 1 h, plus up to 10% jitter. A job past `max_attempts`
+  becomes `failed`.
+- SSE events on the `/api/events` bus: `job.queued`, `job.started`, `job.progress`,
+  `job.done`, `job.failed` and `job.cancelled` (see "Conventions"). Graceful SIGTERM:
+  stop claiming, give running jobs 20 s, then abort them; interrupted jobs are requeued.
+- Tick every 5 s. Periodic work is registered with `scheduler.every(type, ms, fn)` in an
+  in-memory min-heap whose last-run times persist in `kv` (`schedule_last:*`). Hourly:
+  eval pass -> reap. Daily: log retention (`logs_retention`, maintenance class), tool
+  update check (first run 5 minutes after boot), stats rollup. The self-check runs at
+  boot and every `selfcheck.interval_hours`.
 
 Job types: `ingest_history`, `ingest_watch_later`, `ingest_liked`,
 `ingest_subscriptions`, `ingest_channel_uploads`, `recheck_batch`, `takeout_import`,
 `download`, `transcode`, `move`, `reap`, plus maintenance jobs (eval pass, canary,
 self-check, tool update, stats rollup, log retention).
 
-Manual actions: `POST /api/actions/{refresh-all, eval-now, reap-now, ingest-now}`,
-per-video download-now and recheck, and job cancel/retry from the Activity page.
+Manual actions: `POST /api/actions/:name` for `refresh-all`, `eval-now`, `reap-now`,
+`ingest-now`, `selfcheck` or `tools-update` enqueues a deduped `action:<name>` job
+(priority 10) and answers 202 `{ job_id }`; it answers 501 `not_implemented` while no
+handler is registered for that action and 404 for an unknown name. Also per-video
+download-now and recheck, and job cancel/retry from the Activity page
+(`POST /api/jobs/:id/cancel` and `/retry`; a cancel is a status change plus a
+`job.cancelled` event, and the scheduler aborts the worker when it sees either).
 
 ## Notifications and error policy
 
 ### Delivery
 
 Web Push / VAPID from the cellar UI (the mkvid / tracked / cameld pattern): the browser
-subscribes (`POST /api/notifications/subscribe`, `GET /api/notifications/vapid-public-key`
-serves the key); VAPID keys are generated at first boot and stored in `kv`; every
-notification is also written to `notifications` and shown in an in-app inbox with
-acknowledge (`acked_at`). `pushed_at` records push delivery. Subscriptions live in
+subscribes (`POST /api/notifications/subscribe` with its `PushSubscription.toJSON()`;
+`DELETE /api/notifications/subscribe` with `{ endpoint }` unsubscribes;
+`GET /api/notifications/vapid-public-key` serves `{ key }`). VAPID keys are generated at
+first boot and stored in `kv`; the VAPID subject is `mailto:` plus the first allowed
+Access email. Only https endpoints on a known browser push service (FCM, Mozilla,
+Apple, Windows) are accepted, because the server POSTs to them. Every sent notification
+is also written to `notifications` and shown in an in-app inbox with acknowledge
+(`POST /api/notifications/:id/ack`; `POST /api/notifications/ack-all` answers
+`{ acked }`; `acked_at`). `pushed_at` records push delivery. `POST
+/api/notifications/test` sends a forced test notification and answers `{ sent: true,
+id, pushed }`, or `{ sent: false, reason: "rate_limited" }`. Subscriptions live in
 `push_subscriptions`.
 
 ### Thresholds (all configurable global settings)
@@ -954,8 +1105,13 @@ acknowledge (`acked_at`). `pushed_at` records push delivery. Subscriptions live 
 | Proxy failing | after 3 consecutive failures of a proxy (it is skipped for 10 min) |
 | Rule `notify` | up to N times (or unlimited) per video while the video meets the rule |
 
-Every notification type is rate-limited to 1 per 6 h (`notification_state.last_sent_at`)
-unless the previous one has been acknowledged.
+Every notification type is rate-limited to 1 per `notify.rate_limit_hours` (6 h,
+`notification_state.last_sent_at`) unless the previous one has been acknowledged; a
+rate-limited call is suppressed entirely (no inbox row, no push). Types today:
+`download_failures`, `storage_pressure` (`notify.storage_pressure_hours`), `fs_error`
+(forced, never limited), `account_auth_lost` (rate key per account), `recheck_outage`
+(`notify.outage_hours`), `selfcheck_failed` (any failed self-check run) and `test`
+(forced).
 
 ### Canary
 
@@ -974,12 +1130,19 @@ so, and the notification text says which.
 ## Logging and debug data
 
 - Application log: pino NDJSON to stdout plus pino-roll `/data/logs/cellar.log` (amber
-  settings: 20m x 5). Redaction covers `cookie`, `authorization`,
-  `cf-access-jwt-assertion`, `refresh_token`, `client_secret`, and proxy URLs.
-- Per-job log files under `/data/logs/jobs/<jobId>/`: yt-dlp stdout/stderr, ffmpeg
-  logs, and raw API response bodies (gzipped). Retained 14 days or a 2 GB cap (both
-  settings); failed jobs are kept 60 days. Viewable in the Activity UI
-  (`GET /api/jobs/:id/log`).
+  settings: 20m x 5). Redaction covers the `authorization`, `cookie` and
+  `cf-access-jwt-assertion` request headers, `set-cookie` response headers, and the keys
+  `authorization`, `cookie` / `cookies`, `refresh_token`, `access_token`,
+  `client_secret`, `password`, `secret`, `proxy` and `proxy_url` (and their camelCase
+  forms) at the top level and one object down.
+- Per-job log files under `/data/logs/jobs/<jobId>/`: the job's own `job.log`, yt-dlp
+  stdout/stderr, ffmpeg logs, and raw API response bodies (gzipped). Retained
+  `logs.job_retention_days` (14) or a `logs.job_retention_gb` (2) cap; failed jobs are
+  kept `logs.failed_job_retention_days` (60); queued and running jobs' logs are never
+  pruned. Viewable in the Activity UI: `GET /api/jobs/:id/log` lists the files
+  (`{ files: [{ name, size }] }`) and `GET /api/jobs/:id/log/:name` serves one as
+  `text/plain` (a `.gz` file is served decompressed; the name is a single path segment
+  of `[A-Za-z0-9._-]`).
 - The `activity` table records the high-level events the Activity page lists; `jobs`
   rows carry `log_dir`.
 
@@ -1004,43 +1167,86 @@ at rest (AES-256-GCM, `CELLAR_SECRET_KEY`), decrypted to a 0600 temp file under
 `/data/tmp/` per yt-dlp invocation (deleted in `finally`), and the REFRESHED jar is
 written back after each run, because yt-dlp rotates YouTube cookies. On upload the jar
 is validated by running the history feed with `--flat-playlist --playlist-end 1`.
+`POST /api/accounts/:id/cookies` takes `{ cookies }` (at most 1 MiB, Netscape format)
+and answers `{ account, validation }`.
 
 ### Proxies
 
-A global pool of named entries (URL stored encrypted, enable flag). Rules pick `none`,
-`pool` round-robin, or specific entries. Proxies are applied to yt-dlp `--proxy` and
-optionally to API calls, and are health-checked by the self-check. A failing proxy is
-skipped for 10 min; a notification fires after 3 consecutive failures.
+A global pool of named entries (URL stored encrypted as one blob, enable flag). Rules
+pick `none`, `pool` round-robin, or specific entries; the round-robin cursor lives in
+`kv` (`proxy_rr:*`), so the rotation survives restarts, and a proxy inside its skip
+window is passed over. Proxies are applied to yt-dlp `--proxy` and are health-checked by
+the self-check; routing API calls through them is a spec option that is not implemented
+yet. `POST /api/proxies/:id/test` fetches `https://youtube.com/favicon.ico` through the
+proxy (10 s budget; http, https, socks5 and socks5h) and answers `{ ok, latency_ms,
+error? }`, where `error` is a short category (`timeout`, `http_<status>`, a connect
+error code, `unsupported_scheme`) and never a raw message. The outcome feeds the failure
+counter. A failing proxy is skipped for 10 min after 3 consecutive failures (constants
+in `domain/proxies.ts`); a notification fires after those 3 failures.
 
 ### PO-token sidecar
 
 `brainicism/bgutil-ytdlp-pot-provider` runs as a sidecar on the app's internal network
-(no published ports). The yt-dlp plugin is installed in the image. The provider URL is a
-global setting defaulting to the sidecar (`http://bgutil:4416`, seeded from
-`POT_PROVIDER_URL`). The self-check verifies it. The recommended combination against
-the YouTube bot wall is cookies + PO token + a JS runtime.
+(no published ports). The yt-dlp side is the bgutil plugin, installed in the image at
+`/opt/cellar/yt-dlp-plugins/bgutil-ytdlp-pot-provider` (a release zip whose root is the
+`yt_dlp_plugins/` namespace folder; the release ships no checksum, so the download is
+TLS-trusted only). yt-dlp only searches a plugin folder next to its own executable and
+the server runs it from `/data/bin`, so the runner passes `--plugin-dirs` explicitly
+(see "Tool updates"). The provider URL is the `tools.pot_provider_url` setting,
+defaulting to the sidecar (`http://bgutil:4416`, seeded from `POT_PROVIDER_URL`; empty
+disables it), and is handed to yt-dlp as the extractor arg
+`youtubepot-bgutilhttp:base_url=<url>`. The plugin and the sidecar are a matched pair:
+both track `latest`, so rebuilding one without the other can drift. The self-check
+verifies the sidecar. The recommended combination against the YouTube bot wall is
+cookies + PO token + a JS runtime.
 
 ### Tool updates
 
 Official binaries live in `/data/bin`:
 
-- The image installs yt-dlp (`yt-dlp_linux`, sha256-verified against `SHA2-256SUMS`),
-  BtbN static ffmpeg/ffprobe (with libsvtav1 and NVENC) and the bgutil PO-token plugin
-  under `/opt/cellar`. The server copies them to `/data/bin` at boot.
-- A daily check downloads newer releases: yt-dlp from GitHub releases (sha256 verified),
-  ffmpeg/ffprobe from the BtbN builds. The updater swaps atomically and keeps the
-  previous version for rollback; the self-check and About page report versions.
-  `POST /api/tools/update` triggers it on demand.
-- Node (already in the image) is the JS runtime for yt-dlp's challenge solving; the
-  exact flag (`--js-runtimes node` or the current equivalent) is verified against the
-  installed version's `--help`.
+- The image installs yt-dlp (`yt-dlp_linux`, sha256-verified against `SHA2-256SUMS`) and
+  BtbN static ffmpeg/ffprobe (with libsvtav1 and NVENC, sha256-verified against
+  `checksums.sha256`) under `/opt/cellar/bin` (`BASELINE_BIN_DIR`), and the bgutil
+  plugin under `/opt/cellar/yt-dlp-plugins`. At boot the server copies the three
+  binaries into `/data/bin` when absent; a copy already there is never overwritten, so
+  an update survives a restart.
+- Command resolution (`toolCommand` in `server/src/config.ts`), in order: the
+  `CELLAR_TOOL_YT_DLP` / `CELLAR_TOOL_FFMPEG` / `CELLAR_TOOL_FFPROBE` override (a JSON
+  argv array, a test seam), then `$DATA_DIR/bin/<tool>` when it exists at call time,
+  then the bare name from `PATH`. The image's `PATH` starts with `/data/bin`, then
+  `/opt/cellar/bin`.
+- A daily check (the first run 5 minutes after boot; `POST /api/tools/update` triggers
+  it on demand with `{ tool?, force? }`) looks for newer releases: yt-dlp from GitHub
+  releases (sha256 verified), ffmpeg/ffprobe from the BtbN builds (one archive carries
+  both). With `tools.auto_update` on, a newer build is downloaded to
+  `/data/bin/.staging`, checksum-verified, version-probed from staging, and swapped in
+  atomically: the live binary is hard linked to `<tool>.prev` and the staged file is
+  renamed over the live path. With it off, the check only records what is available.
+  `POST /api/tools/rollback` with `{ tool }` swaps `.prev` back (412 when there is no
+  `.prev`); after a rollback, the release rolled away from is not reinstalled until
+  forced. `GET /api/tools` reports per tool `current`, `previous`, `baseline`, `latest`,
+  `checked_at`, `updated_at`, `update_available`, `last_error` and `rolled_back_from`,
+  plus `js_runtime`, `pot_provider_url` and `auto_update`; the self-check and the About
+  page show them.
+- Node (already in the image) is the JS runtime for yt-dlp's challenge solving. Every
+  yt-dlp run gets `--plugin-dirs <CELLAR_YTDLP_PLUGIN_DIRS>` (default
+  `/opt/cellar/yt-dlp-plugins`; empty disables) and `--js-runtimes <tools.js_runtime>`
+  (default `node`). The runtime flag is passed only when the installed yt-dlp's `--help`
+  mentions `--js-runtimes`, probed once per resolved command (`media/exec.ts`).
 
 ### OAuth
 
 OAuth client id/secret live in `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`);
 changing them needs `midclt call app.redeploy cellar`. `GET /api/oauth/google/start?
-account=` begins the consent flow and `GET /api/oauth/google/callback` completes it,
-storing the refresh token encrypted in `account_secrets`.
+account=<id>` answers a 302 to Google's consent screen (authorization code + PKCE S256;
+scopes `openid email youtube.readonly`; a single-use `state` kept in `kv` for 10
+minutes) and `GET /api/oauth/google/callback` completes it, storing the refresh token
+encrypted in `account_secrets`. The callback never answers with an error body: every
+outcome is a 302 back to the SPA, to `/accounts?linked=<accountId>` on success or
+`/accounts?error=<code>` on failure, where the code is one of a closed set (`state`,
+`denied`, `google_error`, `missing_code`, `not_configured`, `secret_key`,
+`account_missing`, `token_exchange`, `no_refresh_token`, `scope`, `id_token`,
+`already_linked`).
 
 ## Share links and the public surface
 
@@ -1061,9 +1267,14 @@ storing the refresh token encrypted in `account_secrets`.
 ### Public surface
 
 The public API surface is exactly `/s/<token>` and `/s/<token>/...`, plus the bundle's
-static assets under `/s/assets/`. Everything else under `/s` (including `/s` itself,
-`/s/`, and any unknown path) returns the same 404 HTML with
-`X-Robots-Tag: noindex, nofollow`.
+static assets under `/s/assets/` and two static legal pages. Everything else under `/s`
+(including `/s` itself, `/s/`, any unknown path, any non-GET method, and any 4xx the
+static handler would produce, such as a directory or traversal attempt) returns the same
+404 HTML (the share bundle's `share.html`, `Cache-Control: no-store`) with
+`X-Robots-Tag: noindex, nofollow`. The exceptions are `GET /s/privacy` and
+`GET /s/tos`: static pages that the Google OAuth consent screen links to, and the only
+`/s` paths that answer 200 without a token. They carry no data (the text says this is
+single-tenant software run by its owner) and are cacheable for an hour.
 
 | Route | Purpose |
 | --- | --- |
@@ -1074,11 +1285,16 @@ static assets under `/s/assets/`. Everything else under `/s` (including `/s` its
 | `GET /s/:token/captions/:lang` | WebVTT captions |
 | `GET /s/:token/thumbnail` | thumbnail |
 | `GET /s/:token/metadata.json` | downloadable metadata |
-| `GET /s/assets/*` | static assets of the share bundle |
+| `GET /s/assets/*` | static assets of the share bundle (only files named `share-*`; admin chunks 404 here) |
+| `GET /s/privacy` | static privacy policy (200, no token) |
+| `GET /s/tos` | static terms of service (200, no token) |
 
 Rules for the public surface:
 
-- Rate limited per IP (in-memory token bucket is fine). Responses carry
+- Rate limited per IP with `@fastify/rate-limit` (in memory, 120 requests per minute),
+  keyed on `CF-Connecting-IP` (set by the Cloudflare edge; the container has no
+  published port, so only cloudflared reaches it) with the request IP as the fallback.
+  Over the limit answers 429 `rate_limited`. Responses carry
   `X-Robots-Tag: noindex, nofollow`, and the HTML carries `<meta name="robots"
   content="noindex">`.
 - The public bundle is a second Vite entry: `web/share.html` -> `web/src/share.ts`,
@@ -1101,9 +1317,13 @@ and creates links for that video. The condition field `has_share_link` and the c
 
 ## Self-check
 
-Runs on demand (button), at boot, and every 24 h. Results are stored with history
-(`checks`) and shown as a status grid; failures emit notifications per the error
-policy. Checks:
+Runs on demand (button, `POST /api/checks/run`), at boot, and every
+`selfcheck.interval_hours` (24). Every check runs concurrently in its own try/catch
+under a 15 s budget. Each result is `{ key, label, level, detail, value?, took_ms }`
+with `level` one of `ok`, `warn`, `fail`, `skip`; a run is stored in `checks`
+(`trigger` boot | schedule | manual; `ok` is true when no result failed) and shown as a
+status grid, and a run with any `fail` raises a `selfcheck_failed` notification.
+Details never carry credentials (proxies are named by label only). Checks:
 
 - each location: writable, free space, quota headroom;
 - DB: `PRAGMA integrity_check`, WAL, migrations applied;
@@ -1123,30 +1343,38 @@ policy. Checks:
 - Unauthenticated: `GET /healthz` (also used by the Docker healthcheck) and the public
   share surface under `/s` (separate table below).
 - Everything else requires a valid CF Access JWT (see "Security model").
-- Paged lists answer `{ rows, total, page, perPage }` (`page`, `perPage` <= 200, `sort`,
-  `dir`, `q`, plus resource filters). Shapes are pinned in `shared/src/apiTypes.ts` and
-  tested on both sides. The client zod-parses every response.
-- Secrets are write-only: responses carry presence booleans (`hasCookies`,
-  `hasRefreshToken`) and timestamps, never the secret.
+- Paged lists (jobs, activity, notifications, channels, and the catalog lists) answer
+  `{ rows, total, page, perPage }` (`page`, `perPage` <= 200, `q`, plus resource
+  filters). Short lists (accounts, locations, proxies, rules, checks) answer `{ rows }`
+  unpaged. Shapes are pinned in `shared/src/apiTypes.ts` and tested on both sides. The
+  client zod-parses every response.
+- Secrets are write-only: responses carry presence booleans (`has_cookies`) and
+  timestamps (`last_api_ok_at`, `last_cookie_ok_at`), never the secret; proxy rows carry
+  only `url_redacted`.
+- Edits use PUT. For accounts, locations and proxies, PATCH is registered as an alias
+  with the same partial-body semantics; rules use PUT only.
 - Rows marked "provisional shape" have a method/path the spec does not pin down.
+- The videos, rules, inspect, shares, stats and takeout routes are not on main yet. The
+  rules, inspect and per-video overrides contract is already pinned in
+  `shared/src/apiTypes.ts` and consumed by the web app; the rest follow the spec.
 
 ### Admin API (auth: admin = valid CF Access JWT)
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| GET | `/healthz` | public | liveness for Docker and tunnel checks |
+| GET | `/healthz` | public | liveness for Docker and tunnel checks; answers `{ ok: true, version }` |
 | GET | `/api/status` | admin | `{ version, insecureMode, startedAt, now, db: { ok, migrations }, tools: { ytdlp, ffmpeg } }` |
-| GET | `/api/events` | admin | SSE stream: frames `{ type, at, payload }`, 25 s heartbeat, `job.*` events |
-| GET | `/api/accounts` | admin | list accounts (status, quota, last ok times) |
-| POST | `/api/accounts` | admin | create an account record |
-| PATCH | `/api/accounts/:id` | admin | edit label, scrape budget, etc. |
-| DELETE | `/api/accounts/:id` | admin | unlink an account |
-| POST | `/api/accounts/:id/cookies` | admin | upload/paste a cookies.txt (validated, then encrypted) |
-| GET | `/api/oauth/google/start?account=` | admin | begin Google OAuth consent for an account |
-| GET | `/api/oauth/google/callback` | admin | OAuth redirect target (`PUBLIC_ORIGIN` + this path) |
-| GET | `/api/channels` | admin | list subscribed and manual channels |
-| POST | `/api/channels` | admin | add a manual channel by URL / handle / id |
-| DELETE | `/api/channels/:id` | admin | remove a manual channel (provisional shape) |
+| GET | `/api/events` | admin | SSE stream: frames `{ type, at, payload }`, 25 s heartbeat, `job.*`, `activity` and `notification` events |
+| GET | `/api/accounts` | admin | list accounts `{ rows }` (status, has_cookies, scrape budget, last ok times) |
+| POST | `/api/accounts` | admin | create an unlinked account record (optional `label`); 201 |
+| PUT | `/api/accounts/:id` | admin | edit `label`, `scrape_budget_per_hour` (null = global), `status` (`disabled` pauses, `pending` resumes); PATCH is an alias |
+| DELETE | `/api/accounts/:id` | admin | unlink an account; 204 |
+| POST | `/api/accounts/:id/cookies` | admin | `{ cookies }`: upload/paste a cookies.txt (validated, then encrypted); answers `{ account, validation }` |
+| GET | `/api/oauth/google/start?account=` | admin | 302 to Google's consent screen for an account |
+| GET | `/api/oauth/google/callback` | admin | OAuth redirect target (`PUBLIC_ORIGIN` + this path); always a 302 to `/accounts?linked=<id>` or `/accounts?error=<code>` |
+| GET | `/api/channels` | admin | paged channels: `q`, `kind` (`subscription` \| `manual`), `limit` (alias of `perPage`) |
+| POST | `/api/channels` | admin | `{ ref }`: add a manual channel by URL / handle / id; 201 new, 200 already tracked |
+| DELETE | `/api/channels/:id` | admin | stop following a manual channel; 204 (409 when only an account subscription holds it) |
 | GET | `/api/videos` | admin | paged list: sort/filter/`q` (FTS)/source/account/status/location/date range |
 | GET | `/api/videos/:id` | admin | one video with effective settings summary |
 | GET | `/api/videos/:id/history` | admin | `video_changes` timeline |
@@ -1158,50 +1386,53 @@ policy. Checks:
 | POST | `/api/videos/:id/recheck` | admin | queue a metadata recheck |
 | POST | `/api/videos/trash` | admin | `{ ids[] }`: per-video override pri 0 + immediate pri-0 sweep |
 | POST | `/api/videos/bulk-download` | admin | `{ ids[], template }` -> streamed ZIP (store, no compression) |
-| PUT | `/api/videos/:id/overrides` | admin | set/clear the per-video `video` rule effects |
-| GET | `/api/rules` | admin | list rules in order |
-| POST | `/api/rules` | admin | create a custom rule |
-| PATCH | `/api/rules/:id` | admin | edit a rule (condition, effects, enabled, name) |
-| DELETE | `/api/rules/:id` | admin | delete a rule |
-| PUT | `/api/rules/order` | admin | persist the drag-and-drop order |
-| POST | `/api/rules/preview` | admin | evaluate a condition: match count + sample |
-| GET | `/api/inspect?id=<identifier>` | admin | normalised id, matched rules in priority order, effective settings with provenance |
-| GET | `/api/locations` | admin | list locations |
-| POST | `/api/locations` | admin | register a location (path, label, quota, enabled) |
-| PATCH | `/api/locations/:id` | admin | edit a location |
-| DELETE | `/api/locations/:id` | admin | remove a location (provisional shape) |
-| GET | `/api/locations/:id/usage` | admin | used bytes, free bytes, quota headroom |
-| GET | `/api/proxies` | admin | list proxy pool entries (no URLs) |
-| POST | `/api/proxies` | admin | add a proxy |
-| PATCH | `/api/proxies/:id` | admin | edit/enable/disable a proxy |
-| DELETE | `/api/proxies/:id` | admin | remove a proxy |
-| GET | `/api/settings` | admin | sparse global overrides |
-| PUT | `/api/settings` | admin | set overrides; a null value clears one |
+| PUT | `/api/videos/:id/overrides` | admin | `{ effects }`: set the per-video `video` rule effects; `effects: null` deletes the rule; answers the inspect response (contract) |
+| GET | `/api/rules` | admin | `{ rows }`: the global rule first, then custom rules by position; no video rules (contract) |
+| POST | `/api/rules` | admin | create a custom rule from a full draft `{ kind, video_id, position, name, enabled, condition, effects }` (contract) |
+| PUT | `/api/rules/:id` | admin | replace a rule with the full draft (same kind); there is no PATCH (contract) |
+| DELETE | `/api/rules/:id` | admin | delete a custom rule; 204 (contract) |
+| PUT | `/api/rules/order` | admin | `{ ids }`: persist the drag-and-drop order as the custom rule ids in ascending position order (global and video rules are not part of it); answers `{ rows }` (contract) |
+| POST | `/api/rules/preview` | admin | `{ condition }`: evaluate a condition, answers `{ count, total, sample }` (contract) |
+| GET | `/api/inspect?id=<identifier>` | admin | normalised id, matched rules in priority order, effective settings with provenance (contract) |
+| GET | `/api/locations` | admin | list locations `{ rows }` |
+| POST | `/api/locations` | admin | register a location (`label`, `container_path`, `quota_bytes`, `enabled`); 201 |
+| PUT | `/api/locations/:id` | admin | edit a location (partial body); PATCH is an alias |
+| DELETE | `/api/locations/:id` | admin | remove a location; 204 |
+| GET | `/api/locations/:id/usage` | admin | `{ used_bytes, fs_free_bytes, fs_total_bytes, quota_bytes, mounted }`, read live |
+| GET | `/api/proxies` | admin | list proxy pool entries `{ rows }` (`url_redacted` only, never the URL) |
+| POST | `/api/proxies` | admin | `{ label, url, enabled? }`: add a proxy; 201 |
+| PUT | `/api/proxies/:id` | admin | edit label / URL / enabled (a new URL resets the failure state); PATCH is an alias |
+| DELETE | `/api/proxies/:id` | admin | remove a proxy; 204 |
+| POST | `/api/proxies/:id/test` | admin | fetch YouTube's favicon through the proxy; answers `{ ok, latency_ms, error? }` |
+| GET | `/api/settings` | admin | `{ overrides }`: the sparse global overrides |
+| PUT | `/api/settings` | admin | the body is the sparse patch itself (a `{ patch }` wrapper is also accepted); a null value clears one; answers `{ overrides }` |
 | GET | `/api/shares` | admin | paged share links (search/filter/sort, expiry) |
 | POST | `/api/shares` | admin | create a link for a video (optional expiry) |
 | POST | `/api/shares/:token/revoke` | admin | revoke one link (provisional shape) |
 | POST | `/api/shares/revoke` | admin | bulk / select-all revoke (provisional shape) |
-| GET | `/api/notifications` | admin | inbox |
-| POST | `/api/notifications/:id/ack` | admin | acknowledge (provisional shape) |
-| POST | `/api/notifications/subscribe` | admin | store a Web Push subscription |
-| GET | `/api/notifications/vapid-public-key` | admin | VAPID public key |
-| GET | `/api/activity` | admin | paged activity log |
-| GET | `/api/jobs` | admin | paged jobs |
-| GET | `/api/jobs/:id/log` | admin | per-job log files |
-| POST | `/api/jobs/:id/cancel` | admin | cancel a job (provisional shape) |
-| POST | `/api/jobs/:id/retry` | admin | retry a job (provisional shape) |
-| GET | `/api/checks` | admin | self-check history |
-| GET | `/api/checks/latest` | admin | the newest self-check run, `{ row }` (provisional shape) |
-| POST | `/api/checks/run` | admin | run the self-check now |
+| GET | `/api/notifications` | admin | paged inbox (`unacked` filter) |
+| POST | `/api/notifications/:id/ack` | admin | acknowledge; answers the notification row |
+| POST | `/api/notifications/ack-all` | admin | acknowledge every unacknowledged notification; answers `{ acked }` |
+| POST | `/api/notifications/test` | admin | send a forced test notification; answers `{ sent, id, pushed }` or `{ sent: false, reason: "rate_limited" }` |
+| POST | `/api/notifications/subscribe` | admin | store a Web Push subscription (`PushSubscription.toJSON()`); 204 |
+| DELETE | `/api/notifications/subscribe` | admin | `{ endpoint }`: drop a Web Push subscription; 204 |
+| GET | `/api/notifications/vapid-public-key` | admin | `{ key }`: the VAPID public key |
+| GET | `/api/activity` | admin | paged activity log (`level`, `kind`, `video_id` filters) |
+| GET | `/api/jobs` | admin | paged jobs (`status`, `type` filters) |
+| GET | `/api/jobs/:id` | admin | one job row |
+| GET | `/api/jobs/:id/log` | admin | the job's log files: `{ files: [{ name, size }] }` |
+| GET | `/api/jobs/:id/log/:name` | admin | one log file as `text/plain` (a `.gz` file is served decompressed) |
+| POST | `/api/jobs/:id/cancel` | admin | cancel a queued or running job; answers the job row (409 in any other state) |
+| POST | `/api/jobs/:id/retry` | admin | retry a failed or cancelled job with a fresh attempt budget; answers the job row (409 in any other state) |
+| GET | `/api/checks?limit=` | admin | self-check history `{ rows }`, newest first (`limit` <= 200, default 20) |
+| GET | `/api/checks/latest` | admin | the newest self-check run, `{ row }` (null before the first run) |
+| POST | `/api/checks/run` | admin | run the self-check now; answers the new check row |
 | GET | `/api/stats/daily` | admin | pre-aggregated daily chart points |
-| GET | `/api/tools` | admin | yt-dlp / ffmpeg versions |
-| POST | `/api/tools/update` | admin | update tools now (check only when `tools.auto_update` is off) |
-| POST | `/api/tools/rollback` | admin | swap a tool back to its `.prev` build (provisional shape) |
-| POST | `/api/takeout` | admin | multipart upload of a Takeout zip / json / csv |
-| POST | `/api/actions/refresh-all` | admin | recheck all metadata, re-evaluate every rule |
-| POST | `/api/actions/eval-now` | admin | run an evaluation pass now |
-| POST | `/api/actions/reap-now` | admin | run the reaper now |
-| POST | `/api/actions/ingest-now` | admin | run ingestion now |
+| GET | `/api/tools` | admin | yt-dlp / ffmpeg versions and update state, `js_runtime`, `pot_provider_url`, `auto_update` |
+| POST | `/api/tools/update` | admin | `{ tool?, force? }`: check for updates now (and apply them when `tools.auto_update` is on); answers the tools response plus `outcomes` |
+| POST | `/api/tools/rollback` | admin | `{ tool }`: swap a tool back to its `.prev` build; 412 when there is none |
+| POST | `/api/takeout` | admin | multipart upload of a Takeout archive (zip / tgz) / json / csv |
+| POST | `/api/actions/:name` | admin | `refresh-all` (recheck all metadata, re-evaluate every rule), `eval-now`, `reap-now`, `ingest-now`, `selfcheck`, `tools-update`: enqueue a job, 202 `{ job_id }` (501 until its handler exists, 404 for an unknown name) |
 
 ### Public API (auth: public; rate-limited per IP; noindex)
 
@@ -1214,19 +1445,30 @@ policy. Checks:
 | GET | `/s/:token/captions/:lang` | public | captions |
 | GET | `/s/:token/thumbnail` | public | thumbnail |
 | GET | `/s/:token/metadata.json` | public | downloadable metadata |
-| GET | `/s/assets/*` | public | static share bundle assets |
+| GET | `/s/assets/*` | public | static share bundle assets (`share-*` files only) |
+| GET | `/s/privacy` | public | static privacy policy, 200 without a token |
+| GET | `/s/tos` | public | static terms of service, 200 without a token |
 | ANY | `/s/<anything else>` | public | the identical 404 HTML, `X-Robots-Tag: noindex, nofollow` |
 
 ### Conventions
 
 - `GET /api/status` is the contract the shell uses: `insecureMode` drives the red
   banner, `tools` feeds About, `db.migrations` shows the applied count.
-- SSE frames carry a named `event:` line, are `{ type, at, payload }`, and the payload
-  contract is pinned in `shared/src/apiTypes.ts` and tested on both sides. Event
-  families: `job.*` (queued, started, progress, finished, failed), plus status,
-  notification and catalog changes as the UI needs them. A publisher may attach extra
-  diagnostic fields without breaking a client.
-- Errors: `DomainError` -> HTTP map; JSON error bodies; 5xx with a fixed message.
+- SSE frames carry a named `event:` line (`event: <type>`, then `data: <json frame>`),
+  are `{ type, at, payload }`, and the payload contract is pinned in
+  `shared/src/apiTypes.ts` and tested on both sides. A comment line (`: heartbeat`) every
+  25 s keeps the stream open. Event types today: `job.queued`, `job.started`,
+  `job.progress`, `job.done`, `job.failed` and `job.cancelled` (payload `{ id, type,
+  videoId, accountId?, pct?, message?, error?, willRetry?, runAfter? }`; a retry
+  re-emits `job.queued`), `activity` (an activity row) and `notification` (`{ id, type,
+  title }`). There is no `job.finished`: a finished job is `job.done` or `job.failed`.
+  The web client lists every named type it wants (`CELLAR_EVENT_TYPES`), because
+  `EventSource` only fires `onmessage` for unnamed frames. The rules domain is expected
+  to add `rules.changed`, `video.effective` and `video.media` (not on main yet). A
+  publisher may attach extra diagnostic fields without breaking a client.
+- Errors: `DomainError` -> HTTP map (see "Rules of the road"); JSON error bodies
+  `{ error, code?, details? }`; 5xx answer `{ error: "internal error", code: "internal" }`;
+  an unmatched `/api/*` path answers a 404 `not_found` JSON body, never the SPA.
 - Bulk download: `POST /api/videos/bulk-download` streams a ZIP with store (no
   compression); filenames come from the template renderer in `shared/`. The UI warns
   above 20 GB; there is no cap. Downloads of video/audio/captions are served as-is, no
@@ -1267,24 +1509,25 @@ policy. Checks:
   `docs/setup-cloudflare.md`, with the curl checks.
 - Secrets at rest: OAuth refresh tokens, cookie jars and proxy URLs are encrypted with
   AES-256-GCM under `CELLAR_SECRET_KEY` (64 hex characters in `.env`) via
-  `security/secrets.ts`. Startup fails fast if the key is missing or malformed when
-  secrets exist. Decrypted cookies only ever touch a 0600 file under `/data/tmp/`,
-  deleted in `finally`.
+  `security/secrets.ts`. A malformed key fails config validation at boot; a missing key
+  logs a warning, and any credential read or write is refused with 412
+  `precondition_failed` until it is set. Decrypted cookies only ever touch a 0600 file
+  under `/data/tmp/`, deleted in `finally`.
 - Never log argv containing cookies or proxy credentials. The pino redaction list covers
   `cookie`, `authorization`, `cf-access-jwt-assertion`, `refresh_token`,
   `client_secret` and proxy URLs. No secrets in argv, URLs, logs, API responses or
   error messages.
 - yt-dlp is invoked with an argv array (no shell); extra args come only from an
-  allowlist. Regex conditions are guarded (length limit plus an `re2`-style check or a
-  timeout via worker).
+  allowlist. Regex conditions are guarded by a static safety check and input truncation
+  (see "Rule AST").
 - Share tokens: 16 random bytes base64url, plaintext in the DB (locked decision),
   uniform 404 for revoked/expired/unknown, per-IP rate limit, noindex headers, no
   directory listing. The public bundle has no API access beyond `/s/:token/*`.
 - SSRF note: cellar fetches user-supplied channel/video identifiers, but identifiers
   are parsed to a normalised id first and yt-dlp / the Data API are only ever given
   YouTube ids, never arbitrary URLs. Proxy URLs are owner-configured.
-- Container: non-root `3100:3100`, `cap_drop: [ALL]`, `no-new-privileges`, datasets
-  `chmod 750` (see "Deployment").
+- Container: non-root `3100:3100`, `cap_drop: [ALL]`, `no-new-privileges`, a read-only
+  root filesystem with tmpfs scratch, datasets `chmod 750` (see "Deployment").
 - OAuth: scope is read-only (`youtube.readonly`); refresh tokens are encrypted; the
   client id/secret live in `.env`, not the DB.
 
@@ -1299,6 +1542,11 @@ OAuth redirects and share URLs), `CELLAR_SECRET_KEY` (64 hex), `CF_ACCESS_TEAM_D
 (`video,compute,utility`), and `INSECURE_ALLOW_PUBLIC_ACCESS` (dev only, empty in any
 deployment).
 
+Also read, all optional: `NODE_ENV` (`development` | `test` | `production`), `WEB_DIST_DIR`
+(the built SPA directory; defaults to `web/dist` beside the server build) and
+`BASELINE_BIN_DIR` (the image's baseline tools, default `/opt/cellar/bin`). A blank value
+in `.env` counts as unset.
+
 `CF_ACCESS_TEAM_DOMAIN` is the same Access team as amber's. `config.ts` reads ONLY
 through zod validation and fails fast. `.env.example` documents every
 deployment-fundamental variable with empty values. Everything that is not
@@ -1310,11 +1558,15 @@ Tool seams (never set in a deployment): `CELLAR_TOOL_YT_DLP`, `CELLAR_TOOL_FFMPE
 tool command (tests run `scripts/fake-bin/yt-dlp.mjs` through node this way); otherwise
 `media/exec.ts` runs `$DATA_DIR/bin/<tool>` when present, else the name from `PATH`.
 `CELLAR_YTDLP_PLUGIN_DIRS` (default `/opt/cellar/yt-dlp-plugins`, empty disables) is
-passed to yt-dlp as `--plugin-dirs`.
+passed to yt-dlp as `--plugin-dirs`, and the runner adds `--js-runtimes <tools.js_runtime>`
+(default `node`) when the installed yt-dlp supports it. Resolution order for a tool
+command: override, then `$DATA_DIR/bin/<tool>`, then `PATH` (`toolCommand`).
 
 Container environment (set in the image, not `.env`): `NODE_ENV=production`,
-`DATA_DIR=/data`, `PORT=8080`, and `HOME=/data` (uid 3100 has no passwd entry, so
-tools that resolve `$HOME` would otherwise fail).
+`DATA_DIR=/data`, `PORT=8080`, `HOME=/data` (uid 3100 has no passwd entry, so tools that
+resolve `$HOME` would otherwise fail), `XDG_CACHE_HOME=/data/cache` and
+`PATH=/data/bin:/opt/cellar/bin:$PATH` (an updated tool shadows the baseline). The
+compose file adds `TMPDIR=/run/ytdlp` (see "Deployment").
 
 ## Frontend
 
@@ -1348,7 +1600,7 @@ tools that resolve `$HOME` would otherwise fail).
 | Videos | server-side datatable, FTS search, filters (source, account, status, location, date range), bulk select, trash icon, bulk download |
 | Video detail | player (`<video>` with `<track>` captions and a speed menu), metadata, history timeline, stats chart, media files, share links, per-video overrides |
 | Inspect | paste any identifier -> normalised id -> matched rules in priority order -> effective settings with per-key provenance -> edit per-video overrides |
-| Rules | reorderable list (drag and drop) + builder + live preview |
+| Rules | reorderable list (drag and drop) + builder + live preview; the editor is a full-screen Drawer, opened from the list or directly at `/rules?edit=<id>` (the Inspect page links matched rules that way) |
 | Accounts | link OAuth, upload cookies, status, quota |
 | Channels | subscribed channels + manual add |
 | Locations | register mounts, quota, usage |
@@ -1369,7 +1621,9 @@ A nested group tree: AND/OR groups with a NOT flag, draggable condition rows,
 field -> operator -> value with field-aware inputs (duration picker, channel
 autocomplete, enum chips, date/age pickers), a live "matches N videos" preview
 (`POST /api/rules/preview`), and a rule list reorderable by drag and drop (relative
-priority; later = higher). Stored as a JSON AST validated by the shared zod schema.
+priority; later = higher). Stored as a JSON AST validated by the shared zod schema. The
+editor saves with `PUT /api/rules/:id` (the full draft) or `POST /api/rules`; the list
+order is persisted with `PUT /api/rules/order { ids }` (custom rule ids only).
 Codec options include `hevc_nvenc` / `h264_nvenc` only when the self-check reports
 NVENC. `include` is not offered on the global rule.
 
@@ -1398,8 +1652,9 @@ override) -> edit per-video overrides (`PUT /api/videos/:id/overrides`).
   parser, Takeout parsers, template renderer, token/404 behaviour. Fixtures are
   synthetic, generated without real account data (recorded public API shapes trimmed to
   well-known public videos).
-- Fake yt-dlp and ffmpeg/ffprobe shims live in `scripts/fake-bin/` (scripts on PATH that
-  emit canned JSON/progress and write dummy files) for integration tests of the job
+- Fake yt-dlp and ffmpeg/ffprobe shims live in `scripts/fake-bin/` (node scripts, wired
+  in through the `CELLAR_TOOL_*` seams or put on PATH, that emit canned JSON/progress
+  and write dummy files) for integration tests of the job
   runner, cookie write-back, transcode verification and moves - no network.
 - Coverage: v8, reporters `text`, `json`, `json-summary`, `cobertura`, `html`, collected
   across shared + server + web. `scripts/coverage-ratchet.mjs` compares against
@@ -1450,13 +1705,17 @@ override) -> edit per-video overrides (`PUT /api/videos/:id/overrides`).
 
 ### Image
 
-Multi-stage `node:26-bookworm-slim`. The builder runs `npm ci`, builds shared -> server
--> web, then `npm prune --omit=dev`. The runtime stage installs apt `ca-certificates
-curl` (plus whatever the tools need), and under `/opt/cellar` the baseline tool set:
-yt-dlp (`yt-dlp_linux`, sha256-verified), BtbN ffmpeg + ffprobe, and the bgutil PO-token
-plugin. At boot the server copies these to `/data/bin`, and the updater swaps newer
+Multi-stage `node:26-bookworm-slim` (builder, tools, runtime). The builder runs `npm ci`,
+builds shared -> server -> web, then `npm prune --omit=dev`. The tools stage downloads
+the baseline set into `/opt/cellar`, checksum-verified where the publisher ships a
+checksum file: yt-dlp (`yt-dlp_linux`, a PyInstaller onefile build, so no Python in the
+image) and BtbN ffmpeg + ffprobe in `/opt/cellar/bin`, and the bgutil PO-token plugin in
+`/opt/cellar/yt-dlp-plugins`. The runtime stage installs apt `ca-certificates curl
+xz-utils` (xz unpacks ffmpeg updates) and copies `/opt/cellar` in. At boot the server
+copies the three binaries to `/data/bin` when absent, and the updater swaps newer
 versions in atomically. Environment: `NODE_ENV=production DATA_DIR=/data PORT=8080
-HOME=/data`. `VOLUME /data`. `HEALTHCHECK curl -fsS http://127.0.0.1:8080/healthz`.
+HOME=/data XDG_CACHE_HOME=/data/cache PATH=/data/bin:/opt/cellar/bin:$PATH`.
+`VOLUME ["/data", "/media"]`. `HEALTHCHECK curl -fsS http://127.0.0.1:8080/healthz`.
 `CMD node server/dist/index.js`. The image runs as a non-root user chosen by compose
 (`user: "3100:3100"`).
 
@@ -1474,9 +1733,12 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-    read_only: true          # with tmpfs below; dropped (and noted in SECURITY.md) if it
-    tmpfs:                   #   does not coexist with the nvidia runtime
-      - /tmp
+    read_only: true          # verified to coexist with the nvidia runtime
+    tmpfs:
+      - /tmp:size=512m,uid=3100,gid=3100,mode=1770            # noexec scratch
+      - /run/ytdlp:size=256m,uid=3100,gid=3100,mode=0700,exec # yt-dlp onefile unpack dir
+    environment:
+      TMPDIR: /run/ytdlp
     env_file:
       - /mnt/tank/apps/cellar/.env
     volumes:
@@ -1494,30 +1756,41 @@ services:
     logging:
       driver: json-file
       options: { max-size: 20m, max-file: "3" }
+    depends_on:
+      - bgutil
   # sidecars (below): bgutil, cellar-watchtower
 ```
 
 - Sidecars: `cellar-watchtower` (`containrrr/watchtower:latest`, `WATCHTOWER_CLEANUP=true
   LABEL_ENABLE=true POLL_INTERVAL=120 ROLLING_RESTART=true`, mounts
   `/var/run/docker.sock` and `/root/.docker/config.json:/config.json:ro`; the GHCR
-  login already exists on the NAS) and `bgutil` (PO-token provider on the internal
-  network at `http://bgutil:4416`, no published ports).
+  login already exists on the NAS) and `bgutil` (`brainicism/bgutil-ytdlp-pot-provider`,
+  container `cellar-bgutil`, `init: true`, the PO-token provider on the internal network
+  at `http://bgutil:4416`, no published ports; it runs as `3100:3100` with a read-only
+  rootfs, a 64 MB tmpfs `/tmp`, `cap_drop: [ALL]` and `no-new-privileges`, verified on
+  the NAS).
+- Scratch space: with a read-only rootfs there are two tmpfs mounts. `/tmp` (512 MB) is
+  `noexec`. `yt-dlp_linux` is a PyInstaller onefile build that unpacks itself into
+  `$TMPDIR` on every run, which needs an executable directory, so a dedicated tmpfs
+  `/run/ytdlp` (256 MB, mode 0700, `exec`) is mounted and `TMPDIR=/run/ytdlp` is set in
+  the service environment. Nothing else gets an exec mount.
 - No published ports: the Cloudflare tunnel reaches the container by DNS alias.
 - GPU: reserved with the mkvid pattern (`deploy.resources.reservations.devices`);
   `NVIDIA_VISIBLE_DEVICES=all`, `NVIDIA_DRIVER_CAPABILITIES=video,compute,utility`.
   Docker's default runtime on the NAS is `nvidia`. The NAS GPU is a GTX 1650 SUPER.
-- Created through `sudo midclt call app.create` with `custom_app: true` (the exact
-  payload shape is a provisional call; the documented fallback is pasting the compose
-  in the Apps UI).
+- Created through `sudo midclt call app.create` with `custom_app: true` and the compose
+  file as the string `custom_compose_config_string` (the payload is recorded in
+  `deploy/README.md`; the fallback is pasting the compose in the Apps UI).
 
 ### Container hardening
 
 - Unique UID/GID `3100:3100` (not present on the NAS OS). Datasets are owned by it with
   `chmod 750`, so the `apps` user (568) and other non-root users cannot read cellar's
   files, and vice versa.
-- `cap_drop: [ALL]` and only what is needed added back (expected: none);
-  `security_opt: [no-new-privileges:true]`; `read_only: true` with `tmpfs: /tmp` if it
-  works with the nvidia runtime (otherwise dropped, noted in `SECURITY.md`).
+- `cap_drop: [ALL]` with nothing added back; `security_opt: [no-new-privileges:true]`;
+  `read_only: true` with the two tmpfs mounts above, verified to coexist with the nvidia
+  runtime on this NAS (`docker run --read-only --gpus all ... nvidia-smi`), so no
+  exception is needed. Storage locations must therefore be real mounts.
 - json-file logging 20m x3, `pull_policy: always`, restart unless-stopped.
 
 ### NAS setup
@@ -1555,21 +1828,22 @@ redirects to Access, and `/s/<anything unknown>` is the 404 HTML with
 
 ## Open technical calls and their resolutions
 
-These are the technical calls spec section 12 leaves to the implementers. Each entry
-lists the spec's recommendation, which this document adopts as the PROVISIONAL decision,
-"provisional until an implementer records the final call" (in the commit or PR that
-implements it, plus a doc update here).
+These are the technical calls spec section 12 leaves to the implementers. Each started as
+the spec's recommendation, held as PROVISIONAL until an implementer recorded the final
+call. DECIDED rows record that call. PROVISIONAL rows still hold the spec's
+recommendation, because the code that settles them (the transcode job in
+`media/ffmpeg.ts`, the video queries in `domain/videos.ts`) is not on main yet.
 
-| # | Call | Provisional decision |
+| # | Call | Decision |
 | --- | --- | --- |
-| 1 | Container for NVENC HEVC output (mp4 with aac re-encode vs mkv keeping opus) | Keep the original audio; use `.mkv` when the audio is Opus and `.mp4` otherwise. Browser playback of mkv/hevc is on the owner's devices. |
-| 2 | Exact yt-dlp flags for the JS runtime and the PO-token provider on the installed version | Determined at build time from the installed yt-dlp's `--help` and the bgutil README (`--js-runtimes node` or the current equivalent; provider URL passed via the plugin's extractor-arg). |
-| 3 | Whether `read_only: true` rootfs coexists with the nvidia runtime | Try it with `tmpfs: /tmp`; if it does not coexist, drop it and note the exception in `SECURITY.md`. |
-| 4 | `midclt call app.create` payload shape for a custom compose app on TrueNAS 25.10 | `custom_app: true` with `custom_compose_config`; if the API refuses, fall back to documenting the UI paste. |
-| 5 | Rate limiter for `/s` | Per-IP token bucket in memory. |
-| 6 | FTS query parsing | Quote user input; prefix match on the last term. |
-| 7 | Takeout history entries without `titleUrl` (ads, removed videos) | Skip them and count them (the activity row reports the count). |
-| 8 | Thumbnail variants to fetch | `maxresdefault`, `sddefault`, `hqdefault`, `mqdefault`, `default` (+ `hq720`); hash each, store on change only. |
-| 9 | Default `cq`/`preset` for hevc_nvenc and `crf`/`preset` for SVT-AV1 | The starting points stand: hevc_nvenc `cq 28` / `p5`; SVT-AV1 `crf 35` / preset 8. |
-| 10 | Whether to also ingest `:ytsubs` as a cheaper way to notice new uploads than per-channel UU polling | API `UU` polling is the locked source of truth; the `:ytsubs` feed may be added later as an optimisation only. |
-| 11 | (from spec 3.7) Whether `video_stats` exists | Exists only as a derived chart index rebuilt from `video_changes`; dropped if charts can query `video_changes` fast enough. |
+| 1 | Container for NVENC HEVC output (mp4 with aac re-encode vs mkv keeping opus) | PROVISIONAL. Keep the original audio; use `.mkv` when the audio is Opus and `.mp4` otherwise. Browser playback of mkv/hevc is on the owner's devices. |
+| 2 | Exact yt-dlp flags for the JS runtime and the PO-token provider on the installed version | DECIDED. Every yt-dlp run gets `--plugin-dirs <CELLAR_YTDLP_PLUGIN_DIRS>` (default `/opt/cellar/yt-dlp-plugins`) and `--js-runtimes <tools.js_runtime>` (default `node`, passed only when `--help` advertises it). The provider URL goes in as the extractor arg `youtubepot-bgutilhttp:base_url=<url>`. Verified in the built image: the plugin registers as `bgutil:http` and needs yt-dlp 2025.05.22 or newer. |
+| 3 | Whether `read_only: true` rootfs coexists with the nvidia runtime | DECIDED. Kept: it coexists (verified on the NAS). Because the yt-dlp onefile build must unpack into an executable directory, the layout is `/tmp` (noexec) plus a dedicated exec tmpfs `/run/ytdlp` with `TMPDIR=/run/ytdlp`. |
+| 4 | `midclt call app.create` payload shape for a custom compose app on TrueNAS 25.10 | DECIDED. `custom_app: true` with `custom_compose_config_string` (the compose file as a string), recorded in `deploy/README.md`; the UI paste remains the documented fallback. |
+| 5 | Rate limiter for `/s` | DECIDED. `@fastify/rate-limit`, 120 requests per minute per IP in memory, keyed on `CF-Connecting-IP` (request IP as the fallback); over the limit is 429 `rate_limited`. |
+| 6 | FTS query parsing | PROVISIONAL. Quote each term of the user input; prefix match on the last term. (`videos_fts` is contentless FTS5 with the `unicode61` tokenizer.) |
+| 7 | Takeout history entries without `titleUrl` (ads, removed videos) | DECIDED (parser). Entries are read from `titleUrl`; ads and entries without a usable URL are skipped and counted per reason (`shared/src/takeout.ts`), and the Activity row reports the counts. PROVISIONAL (archive formats): the importer is not on main; the archive is expected to be a `.zip` or a `.tgz`. |
+| 8 | Thumbnail variants to fetch | DECIDED. The `thumbnails.variants` setting: default `maxresdefault`, `sddefault`, `hqdefault`, `mqdefault`, `default` and `hq720` (at least one); hash each, store on change only. |
+| 9 | Default `cq`/`preset` for hevc_nvenc and `crf`/`preset` for SVT-AV1 | PROVISIONAL. The starting points stand: hevc_nvenc `quality 28` / `p5` (the registry default); SVT-AV1 `crf 35` / preset 8. |
+| 10 | Whether to also ingest `:ytsubs` as a cheaper way to notice new uploads than per-channel UU polling | PROVISIONAL. API `UU` polling is the locked source of truth; the `:ytsubs` feed may be added later as an optimisation only. |
+| 11 | (from spec 3.7) Whether `video_stats` exists | DECIDED. Kept as a derived chart index (migration 003) rebuilt from `video_changes`; never a second source of truth. |
