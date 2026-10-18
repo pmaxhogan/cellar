@@ -314,9 +314,47 @@ export type AckAllResponse = z.infer<typeof AckAllResponseSchema>;
 export const VapidPublicKeyResponseSchema = z.object({ key: z.string() });
 export type VapidPublicKeyResponse = z.infer<typeof VapidPublicKeyResponseSchema>;
 
+/** Browser push services a subscription endpoint may point at (exact hosts). */
+export const PUSH_SERVICE_HOSTS: readonly string[] = [
+  "fcm.googleapis.com",
+  "updates.push.services.mozilla.com",
+  "web.push.apple.com",
+];
+/** Host suffixes of push services that shard by subdomain. */
+export const PUSH_SERVICE_HOST_SUFFIXES: readonly string[] = [
+  ".notify.windows.com",
+  ".push.apple.com",
+];
+
+/**
+ * True when `endpoint` is an https URL on the default port, without
+ * credentials, whose host is a known browser push service. The server
+ * POSTs to this URL, so anything else would be a request-forgery primitive.
+ *
+ * Hand-rolled like idParser (shared has no URL global). The authority must be
+ * a plain DNS name: any port, userinfo, percent escape, backslash or other
+ * character outside [a-z0-9.-] is refused, so what passes here is read the
+ * same way by the WHATWG parser web-push uses.
+ */
+export function isAllowedPushEndpoint(endpoint: string): boolean {
+  const match = /^https:\/\/([^/?#]*)(?:[/?#]|$)/i.exec(endpoint);
+  const authority = match?.[1]?.toLowerCase();
+  if (authority === undefined || !/^[a-z0-9.-]+$/.test(authority)) {
+    return false;
+  }
+  const host = authority.replace(/\.$/, "");
+  return (
+    PUSH_SERVICE_HOSTS.includes(host) ||
+    PUSH_SERVICE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
+  );
+}
+
 /** The browser's PushSubscription.toJSON(). expirationTime is accepted and ignored. */
 export const PushSubscriptionInputSchema = z.object({
-  endpoint: z.url({ protocol: /^https$/ }).max(2048),
+  endpoint: z
+    .url({ protocol: /^https$/ })
+    .max(2048)
+    .refine(isAllowedPushEndpoint, "Not a known browser push service endpoint."),
   expirationTime: z.number().nullable().optional(),
   keys: z.object({
     p256dh: z.string().min(1).max(512),

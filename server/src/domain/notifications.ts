@@ -1,4 +1,5 @@
 import {
+  isAllowedPushEndpoint,
   resolveSettings,
   type NotificationRow,
   type NotifyResult,
@@ -151,9 +152,22 @@ function hostOf(endpoint: string): string {
  * their host is logged.
  */
 async function pushToAll(deps: NotifyDeps, row: NotificationRow): Promise<number> {
-  const subscriptions = deps.db.all<{ endpoint: string; keys_json: string }>(
-    "SELECT endpoint, keys_json FROM push_subscriptions",
-  );
+  // Re-checked at send time so a row stored before the allowlist existed (or
+  // written by anything other than the subscribe route) is never POSTed to.
+  const subscriptions = deps.db
+    .all<{ endpoint: string; keys_json: string }>(
+      "SELECT endpoint, keys_json FROM push_subscriptions",
+    )
+    .filter((subscription) => {
+      if (isAllowedPushEndpoint(subscription.endpoint)) {
+        return true;
+      }
+      deps.log.warn(
+        { host: hostOf(subscription.endpoint) },
+        "skipped a push subscription whose endpoint is not a known push service",
+      );
+      return false;
+    });
   if (subscriptions.length === 0) {
     return 0;
   }
