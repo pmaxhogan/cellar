@@ -75,13 +75,24 @@ export function fakeServer(): FakeServer {
     const request: FakeRequest = { method, path: url.pathname, query: url.searchParams, body };
     calls.push(request);
     // Last registered wins, so a test can override a default route.
-    for (let i = routes.length - 1; i >= 0; i -= 1) {
-      const route = routes[i]!;
-      if (route.method === method && matches(route.pattern, url.pathname)) {
-        return route.handler(request);
-      }
+    const route = [...routes]
+      .reverse()
+      .find((candidate) => candidate.method === method && matches(candidate.pattern, url.pathname));
+    if (route === undefined) {
+      return apiError(404, `No fake route for ${method} ${url.pathname}`, "not_found");
     }
-    return apiError(404, `No fake route for ${method} ${url.pathname}`, "not_found");
+    const reply = Promise.resolve(route.handler(request));
+    const signal = init?.signal;
+    if (signal === undefined || signal === null) return reply;
+    // Like real fetch, an abort while the reply is pending rejects at once.
+    return Promise.race([
+      reply,
+      new Promise<Response>((_, reject) => {
+        signal.addEventListener("abort", () =>
+          reject(new DOMException("The operation was aborted.", "AbortError")),
+        );
+      }),
+    ]);
   }) as typeof fetch;
 
   const server: FakeServer = {
