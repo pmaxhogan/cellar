@@ -862,11 +862,13 @@ downloaded vcodec (via ffprobe):
 - NVENC HEVC: `ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i in -c:v hevc_nvenc
   -preset p5 -cq 28 -c:a copy -movflags +faststart out.<ext>`.
 - Software SVT-AV1: `-c:v libsvtav1 -preset 8 -crf 35`, run under `nice 19`.
-- Container rule (provisional): keep the original audio; the output is `.mkv` when the
-  audio is Opus and `.mp4` otherwise (see "Open technical calls").
+- Container rule (decided, see "Open technical calls" 1): keep the original audio; the
+  output is `.mkv` when the output audio is Opus or Vorbis and `.mp4` (with
+  `-movflags +faststart`, HEVC tagged `hvc1`) otherwise.
 - Verification: ffprobe on the output must show the expected streams and a duration
   within 1 s of the source. On success the job swaps the current media, DELETES the
-  original and updates `media` (`transcoded_from` points at the source row). "Store
+  original and updates the `media` row in place (same id and version;
+  `transcoded_from` records the source codec, for example `vp9`). "Store
   both copies" applies to YouTube-side edits only (see versions below), never to
   transcodes.
 
@@ -1836,14 +1838,14 @@ recommendation, because the code that settles them (the transcode job in
 
 | # | Call | Decision |
 | --- | --- | --- |
-| 1 | Container for NVENC HEVC output (mp4 with aac re-encode vs mkv keeping opus) | PROVISIONAL. Keep the original audio; use `.mkv` when the audio is Opus and `.mp4` otherwise. Browser playback of mkv/hevc is on the owner's devices. |
-| 2 | Exact yt-dlp flags for the JS runtime and the PO-token provider on the installed version | DECIDED. Every yt-dlp run gets `--plugin-dirs <CELLAR_YTDLP_PLUGIN_DIRS>` (default `/opt/cellar/yt-dlp-plugins`) and `--js-runtimes <tools.js_runtime>` (default `node`, passed only when `--help` advertises it). The provider URL goes in as the extractor arg `youtubepot-bgutilhttp:base_url=<url>`. Verified in the built image: the plugin registers as `bgutil:http` and needs yt-dlp 2025.05.22 or newer. |
+| 1 | Container for NVENC HEVC output (mp4 with aac re-encode vs mkv keeping opus) | DECIDED (wave 3, `media/ffmpeg.ts`): keep the original audio (`audio_codec: copy`); the container follows the output audio: `.mkv` for Opus/Vorbis, `.mp4` with `-movflags +faststart` otherwise; HEVC in MP4 is tagged `hvc1`. NVENC runs `-rc vbr -cq <q> -b:v 0`. |
+| 2 | Exact yt-dlp flags for the JS runtime and the PO-token provider on the installed version | DECIDED (wave 3, `media/ytdlp.ts`): `--plugin-dirs <dir>`, `--js-runtimes <tools.js_runtime>`, `--extractor-args youtubepot-bgutilhttp:base_url=<url>` (omitted when the provider URL is empty). Progress uses `--newline --progress` with a `cellar-progress` marker in `--progress-template`; the final file comes from `--print after_move:...` plus `--print-json`. `--sleep-requests` takes one value, drawn per run from the min..max settings. |
 | 3 | Whether `read_only: true` rootfs coexists with the nvidia runtime | DECIDED. Kept: it coexists (verified on the NAS). Because the yt-dlp onefile build must unpack into an executable directory, the layout is `/tmp` (noexec) plus a dedicated exec tmpfs `/run/ytdlp` with `TMPDIR=/run/ytdlp`. |
 | 4 | `midclt call app.create` payload shape for a custom compose app on TrueNAS 25.10 | DECIDED. `custom_app: true` with `custom_compose_config_string` (the compose file as a string), recorded in `deploy/README.md`; the UI paste remains the documented fallback. |
 | 5 | Rate limiter for `/s` | DECIDED. `@fastify/rate-limit`, 120 requests per minute per IP in memory, keyed on `CF-Connecting-IP` (request IP as the fallback); over the limit is 429 `rate_limited`. |
 | 6 | FTS query parsing | PROVISIONAL. Quote each term of the user input; prefix match on the last term. (`videos_fts` is contentless FTS5 with the `unicode61` tokenizer.) |
 | 7 | Takeout history entries without `titleUrl` (ads, removed videos) | DECIDED (parser). Entries are read from `titleUrl`; ads and entries without a usable URL are skipped and counted per reason (`shared/src/takeout.ts`), and the Activity row reports the counts. PROVISIONAL (archive formats): the importer is not on main; the archive is expected to be a `.zip` or a `.tgz`. |
-| 8 | Thumbnail variants to fetch | DECIDED. The `thumbnails.variants` setting: default `maxresdefault`, `sddefault`, `hqdefault`, `mqdefault`, `default` and `hq720` (at least one); hash each, store on change only. |
-| 9 | Default `cq`/`preset` for hevc_nvenc and `crf`/`preset` for SVT-AV1 | PROVISIONAL. The starting points stand: hevc_nvenc `quality 28` / `p5` (the registry default); SVT-AV1 `crf 35` / preset 8. |
+| 8 | Thumbnail variants to fetch | DECIDED: `--write-all-thumbnails`, each file mapped back to its variant through the info dict and filtered by the `thumbnails.variants` setting (default: those six); hashed, stored on change only as `<variant>-<sha>.<ext>` keeping the real extension (YouTube also serves WebP). |
+| 9 | Default `cq`/`preset` for hevc_nvenc and `crf`/`preset` for SVT-AV1 | DECIDED: hevc_nvenc `cq 28` / `p5` (the effect defaults); SVT-AV1 `crf 35` / preset 8 when it runs as the fallback for a missing NVENC encoder, the rule's quality and numeric preset when `av1_svt` is chosen explicitly. |
 | 10 | Whether to also ingest `:ytsubs` as a cheaper way to notice new uploads than per-channel UU polling | PROVISIONAL. API `UU` polling is the locked source of truth; the `:ytsubs` feed may be added later as an optimisation only. |
 | 11 | (from spec 3.7) Whether `video_stats` exists | DECIDED. Kept as a derived chart index (migration 003) rebuilt from `video_changes`; never a second source of truth. |
