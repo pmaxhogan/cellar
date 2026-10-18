@@ -423,3 +423,29 @@ export function classifyFailure(stderr: string, stdout = ""): YtdlpFailure {
   }
   return { kind: "unknown", message, permanent: false };
 }
+
+// ---------------------------------------------------------------------------
+// Tool settings
+// ---------------------------------------------------------------------------
+
+/** The registry default of `tools.pot_provider_url`. */
+export const DEFAULT_POT_PROVIDER_URL = "http://bgutil:4416";
+
+/**
+ * PO token provider, plugin dirs and JS runtime for a run. The provider URL
+ * setting wins when the owner changed it (empty disables); while it is still
+ * the registry default, POT_PROVIDER_URL from the environment seeds it.
+ */
+export function ytdlpToolOptions(
+  settings: Pick<ResolvedSettings, "tools.pot_provider_url" | "tools.js_runtime">,
+  config: { potProviderUrl: string; ytdlpPluginDirs: string },
+): { potProviderUrl: string; pluginDirs: string[]; jsRuntime: string } {
+  const setting = settings["tools.pot_provider_url"];
+  const potProviderUrl = setting === DEFAULT_POT_PROVIDER_URL ? config.potProviderUrl : setting;
+  const dirs = config.ytdlpPluginDirs.trim();
+  return {
+    potProviderUrl,
+    pluginDirs: dirs === "" ? [] : [dirs],
+    jsRuntime: settings["tools.js_runtime"],
+  };
+}
