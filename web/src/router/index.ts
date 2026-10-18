@@ -15,7 +15,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: "/videos/:id",
     name: "video",
-    component: () => import("../pages/VideoDetailPage.vue"),
+    component: () => import("../pages/VideoPage.vue"),
     meta: { title: "Video" },
   },
   {

@@ -3,7 +3,6 @@ import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia, type Pinia } from "pinia";
 import type { Component } from "vue";
 import AboutPage from "../src/pages/AboutPage.vue";
-import VideoDetailPage from "../src/pages/VideoDetailPage.vue";
 import type { ApiClient } from "../src/api/client.ts";
 import { NAV_LINKS, routes } from "../src/router/index.ts";
 import { flush } from "./helpers/dom.ts";
@@ -36,6 +35,8 @@ async function mountPage(component: Component, api: ApiClient = stubApi()) {
 
 // Pages that are no longer stubs have their own suites under test/<page>/.
 const IMPLEMENTED = new Set([
+  "/",
+  "/videos/:id",
   "/about",
   "/accounts",
   "/activity",
@@ -59,12 +60,6 @@ describe("page stubs", () => {
       expect(wrapper.find(`.empty-state [data-icon='${link.icon}']`).exists()).toBe(true);
     });
   }
-
-  it("Video detail renders its header and an empty state", async () => {
-    const wrapper = await mountPage(VideoDetailPage);
-    expect(wrapper.find("h1").text()).toBe("Video");
-    expect(wrapper.find(".empty-state").exists()).toBe(true);
-  });
 
   it("uses ASCII only in every page's copy", async () => {
     for (const link of NAV_LINKS) {
