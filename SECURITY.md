@@ -69,9 +69,17 @@ Share links exist so the owner can send a friend one video. By design:
   "no client-side security theatre". The token is a bearer secret either way; hashing
   it would protect only against database disclosure, and the database already holds
   the catalog that a share would reveal. The link is revocable and can expire.
-- Unknown, expired and revoked tokens return the **identical 404** page and headers,
-  so a response cannot be used to tell them apart or to probe which tokens ever
-  existed.
+- **Every invalid state returns the identical 404** page and headers: an unknown,
+  malformed, expired or revoked token, a live link's missing file or bad caption
+  language, any unknown sub-path, and the same under `HEAD` and under any other method
+  (a `POST` included). No response can be used to tell those cases apart or to probe
+  which tokens ever existed; only a valid token answers anything else. Only the rate
+  limit's 429 differs.
+- Token URLs are bearer secrets, so the token routes log at `warn` and above only: a live
+  link never lands in the request log. Media is served `no-cache` so a revoked link stops
+  at once, and the downloadable metadata is built from an **allowlist** of info.json
+  keys, so container paths, request headers, signed format URLs and the names of the
+  owner's playlists never leave.
 - Public endpoints are **rate limited per IP** (in memory, token bucket).
 - Pages send `X-Robots-Tag: noindex, nofollow` and a `noindex` robots meta tag.
 - The surface is **not enumerable**: there is no index, listing or search under `/s`;
@@ -91,6 +99,38 @@ Access matches paths case-insensitively while the app router is case-sensitive.
 `/S/nope` passes the bypass but is not a public path to the app, which answers 401
 without serving anything (`/s/nope` answers 404 from the app). Both layers fail
 closed.
+
+### The Takeout upload surface
+
+`POST /api/takeout` is the only endpoint that accepts a file upload, and the only place
+cellar unpacks an archive. Properties:
+
+- **Owner only.** It sits behind Access and the app's own JWT check like the rest of
+  `/api`; it is not under `/s`. Multipart parsing is registered for that one route only.
+- **Size capped.** One request may carry up to 500 files and 2 GB in total; larger ones
+  are refused with 413. Files stream to disk under `/data/tmp` (directory 0700, files
+  0600), never into memory, and the staging directory is deleted when the import
+  finishes or is rejected.
+- **Traversal refused.** An archive with an absolute or `..` member is rejected whole
+  before anything is extracted; zip entries are written under generated names, a tarball
+  is extracted by the system `tar` into its own subdirectory, only regular files whose
+  real path stays inside it are read, and symlinks are skipped.
+- **No decompression-bomb guard.** The 2 GB cap applies to the compressed upload; the
+  unpacked size is not limited, so an archive that expands enormously could fill `/data`.
+  The uploader is the authenticated owner, so this is accepted rather than defended.
+- Only `watch-history.json`, playlist CSVs and `subscriptions.csv` are parsed (as data,
+  never executed); everything else in an archive is skipped.
+
+### Private details guard
+
+The repository is public, but the maintainer's deployment is not. `scripts/check-private.mjs`
+fails CI (and `npm run lint:private`) when any tracked text file matches a private
+pattern, such as the real hostname, dataset paths, usernames or ids. The patterns are
+**never in the tree**: they are held in a repository secret (`PRIVATE_PATTERNS`) and, for
+local runs, in a file in the maintainer's home directory. A failure prints only
+`file:line`, never the match, and a push to the default branch fails closed when the
+secret is not configured. Docs and examples use hypothetical values instead (host `nas`,
+`/mnt/tank/apps/cellar`, `<team>.cloudflareaccess.com`, `owner@example.com`).
 
 ### Secrets at rest
 
@@ -119,16 +159,20 @@ closed.
 - **Regex conditions in rules are guarded** against catastrophic backtracking (length
   limits and a safe-regex check or a timeout), so an owner-authored pattern cannot
   wedge the server.
-- **No credentials in argv.** Cookies are passed as a file path and proxy URLs come
-  from the encrypted store; argv containing either is never logged.
+- **No credentials in argv, and argv is redacted before it is logged.** Cookies are
+  passed as a file path (never inline) and proxy URLs come from the encrypted store. The
+  download pipeline logs its yt-dlp argv only through a redactor: the `--proxy` value
+  keeps its host but loses its credentials, anything else URL-shaped is masked
+  (`scheme://***@host`), and the same masking is applied line by line to the per-job
+  `yt-dlp.log`. The cookie file path may appear in a log; its contents never do.
 - **pino redaction** covers `cookie`, `authorization`, `cf-access-jwt-assertion`,
   `refresh_token`, `client_secret` and proxy URLs, in both the stdout stream and the
   rotating log file.
 - **Credentials never appear in logs, URLs, API responses or error messages.** 5xx
   responses carry a fixed message; the real error goes to the log only.
-- Per-job log files keep yt-dlp and ffmpeg output and gzipped raw API bodies for 14
-  days (60 for failures). They are on the 750 `data` dataset.
-  Treat them as sensitive when sharing logs for support.
+- Per-job log files keep the job log and yt-dlp and ffmpeg output (with the redacted
+  argv) for 14 days (60 for failures). They are on the 750 `data` dataset. Treat them as
+  sensitive when sharing logs for support: they name video ids and titles.
 
 ### Container hardening
 
@@ -139,11 +183,12 @@ The Custom App ([`deploy/docker-compose.nas.yml`](deploy/docker-compose.nas.yml)
   user (568) and other local users cannot read cellar's files, and cellar cannot read
   theirs.
 - `cap_drop: [ALL]` with nothing added back, and `no-new-privileges:true`.
-- **`read_only: true` root filesystem** with a size-limited, `noexec` `tmpfs` on `/tmp`
-  and one small executable `tmpfs` at `/run/ytdlp` (`TMPDIR`), because the single-file
-  yt-dlp build unpacks itself into its temp dir on every run. This was verified to work
-  together with the nvidia runtime and `cap_drop ALL`. The only writable places are
-  `/tmp`, `/run/ytdlp`, `/data` and the `/media` mounts.
+- **`read_only: true` root filesystem** with a size-limited (512 MB), `noexec` `tmpfs` on
+  `/tmp` and one dedicated executable `tmpfs` at `/run/ytdlp` (1 GB, mode 0700, owned by
+  the container uid, set as `TMPDIR`), because the single-file yt-dlp build unpacks
+  itself into its temp dir on every run. Nothing else is mounted executable. This was
+  verified to work together with the nvidia runtime and `cap_drop ALL`. The only
+  writable places are `/tmp`, `/run/ytdlp`, `/data` and the `/media` mounts.
 - **No published ports.** The Cloudflare tunnel reaches the service over the internal
   app network by its DNS alias; nothing listens on the NAS's LAN address for cellar.
 - The **bgutil PO-token sidecar is internal only** (no ports, reachable by name from
@@ -160,17 +205,24 @@ to verify them:
 - **yt-dlp** comes from the official GitHub release as the single-file `yt-dlp_linux`
   binary, and its **sha256 is verified against the release's `SHA2-256SUMS`** before
   use.
-- **ffmpeg and ffprobe** come from BtbN's static builds.
-- Updates are **atomic**: a new version is staged, verified, and swapped in with a
-  rename, and **the previous version is kept for rollback**. The image ships a
-  baseline copy, so a failed update never leaves cellar without a working tool. The
-  Self-check page reports installed versions.
+- **ffmpeg and ffprobe** come from BtbN's static builds, from the release named by the
+  `tools.ffmpeg_release_tag` setting. The default is a **pinned** dated release (the one
+  the image ships); `latest` is an explicit opt-in. The archive's **sha256 is verified
+  against the release's `checksums.sha256`** before use.
+- Updates are **atomic**: a new version is staged, verified (checksum, then a version
+  probe run from the staging directory), and swapped in with a rename, and **the
+  previous version is kept as `<tool>.prev` for rollback**. The image ships a baseline
+  copy, so a failed update never leaves cellar without a working tool. The Self-check
+  page reports installed versions and update problems.
+- A staged ffmpeg that can no longer open an NVENC encoder the live one can is
+  **refused** (the update outcome is `blocked`), so an update cannot silently break
+  hardware encoding.
 - The tools live in `/data/bin`, owned by `3100`, writable only by cellar.
 
-Not pinned or verified beyond that: the BtbN build is trusted by origin (its
-integrity rests on GitHub and TLS), and the sidecar images `bgutil` and `watchtower`
-use floating `latest` tags with watchtower auto-updating them, as do cellar's own
-images.
+Not verified beyond that: the BtbN checksum file comes from the same GitHub release as
+the archive, so the build's integrity rests on GitHub and TLS; the bgutil plugin zip has
+no published checksum at all. The sidecar images `bgutil` and `watchtower` use floating
+`latest` tags with watchtower auto-updating them, as do cellar's own images.
 
 ## What is NOT protected
 
@@ -235,5 +287,7 @@ The following will be closed without a fix:
   way that makes an upstream issue materially worse, that part is in scope.
 - Abuse of the owner's own authenticated session or of an already-sent share link.
 - YouTube terms-of-service or account-enforcement consequences of using the tool.
-- Resource exhaustion from a very large subscription or history import.
+- Resource exhaustion from a very large subscription or history import, including a
+  Takeout archive that expands far beyond its compressed size (there is no
+  decompression-bomb guard; see "The Takeout upload surface").
 - Findings from automated scanners with no demonstrated exploit path.

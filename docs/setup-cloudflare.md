@@ -88,8 +88,10 @@ trusted to Access:
   `/S/x` and `/api/...` are not. Everything else needs a valid Access JWT whether or
   not Cloudflare gated it first.
 - The only routes under `/s` are `/s/<token>`, `/s/<token>/...` (the media, captions
-  and metadata for that one share) and the public bundle's own assets under
-  `/s/assets/`.
+  and metadata for that one share), the public bundle's own assets under `/s/assets/`,
+  and two static legal pages, `/s/privacy` and `/s/tos`, which the Google OAuth consent
+  screen links to (they answer 200 without a token and carry no data). Every other path
+  under `/s`, any other method and every invalid token answer the same 404 page.
 - **The admin bundle never lives under `/s`.** The admin SPA, its assets and all of
   `/api/*` are served from other paths, so the bypass never exposes them. Nothing may
   ever be registered under `/s` without its own authentication.
@@ -161,6 +163,19 @@ This is Cloudflare's behaviour, not something this repository controls, so re-ru
 check after any change on Cloudflare's side. Sibling paths such as `/sx` are not
 matched by the `s` entry and stay behind the login as well (observed on healthy for
 the equivalent exact-path entry; not separately re-checked here).
+
+## 5. Request size limit (Takeout uploads)
+
+Cloudflare caps one proxied request body at 100 MB on the Free and Pro plans (higher on
+Business and Enterprise), and the tunnel hostname is proxied. Cellar's own limit for a
+Google Takeout upload (`POST /api/takeout`) is 2 GB, so a large archive sent through
+`cellar.maxhogan.dev` is cut off at Cloudflare's edge before the app sees it, and the
+browser shows a network or Cloudflare error rather than a cellar message. This is
+Cloudflare's behaviour, not a setting here. Upload the loose files from inside the archive
+instead (`watch-history.json`, the playlist CSVs and `subscriptions.csv`; they are usually
+far smaller than the archive), one request each if needed. Nothing else in cellar uploads
+large bodies: the share media routes and bulk ZIP downloads are downloads, which the
+request cap does not limit.
 
 ## Troubleshooting
 

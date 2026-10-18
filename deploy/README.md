@@ -56,8 +56,10 @@ database, and the reverse holds too. Only root (and therefore `sudo` from
 What each directory holds:
 
 - `/data`: the state database (SQLite, WAL), application and per-job logs, the
-  downloaded `yt-dlp` / `ffmpeg` binaries (`/data/bin`), thumbnails, captions, and
-  per-video metadata blobs. It is not counted against any storage quota.
+  `yt-dlp` / `ffmpeg` / `ffprobe` binaries and their `<tool>.prev` rollback copies
+  (`/data/bin`), thumbnails, captions, per-video metadata blobs, and scratch space
+  (`/data/tmp`: cookie files, Takeout upload staging). It is not counted against any
+  storage quota.
 - `/media`: the first storage location. It holds only video and audio files, laid
   out as `<location>/<channelId>/<videoId>/<videoId>.<ext>`. Its quota is set in
   cellar's UI, not in ZFS.
@@ -191,9 +193,55 @@ yt-dlp/ffmpeg versions, NVENC/NVDEC, the PO-token sidecar and each account.
   Or Apps -> cellar -> Edit in the UI. Never run `docker compose up -d` by hand: the
   Apps middleware owns the project and will fight it.
 
-yt-dlp and ffmpeg are not part of image updates. They are downloaded into
-`/data/bin` at boot and checked daily; the image only ships a baseline copy. The
-About page shows the installed versions and has a manual update button.
+yt-dlp and ffmpeg are not part of image updates. The image only ships a baseline copy
+under `/opt/cellar/bin`; at boot the server copies it into `/data/bin` when a tool is
+absent there (a copy already in `/data/bin` is never overwritten, so an update survives
+a restart and a redeploy), and a daily check (the first one 5 minutes after boot)
+downloads newer verified builds into `/data/bin`. The About page shows the installed
+versions and has a manual update button.
+
+- **The ffmpeg pin.** ffmpeg comes from BtbN's builds, from the release named by the
+  `tools.ffmpeg_release_tag` setting (Settings -> Tools). The default is a pinned dated
+  release (`autobuild-2025-12-31-14-28`, the one the image ships), not `latest`: builds
+  from early 2026 on are linked against NVENC API 13.1, which needs NVIDIA driver 610 or
+  newer, and on an older driver (this NAS runs 580) they list `hevc_nvenc` and then fail to
+  open an encoder, so every transcode would silently fall back to slow software encoding.
+  Set the tag to `latest` only after the NAS driver is new enough. As a second line of
+  defence, an update whose staged ffmpeg cannot open an NVENC encoder that the current
+  one can is refused (outcome `blocked`, shown on About and in Self-check) and is not
+  downloaded again until you force an update.
+- **The first update check downloads the pinned ffmpeg once.** The image's baseline has
+  no recorded build date, so the first check installs the pinned release over it (about
+  80 MB, checksum-verified) even though it is the same release; later checks say it is up
+  to date until you change the tag.
+- **Rollback files.** Every update first hard links the live binary to `<tool>.prev` in
+  `/data/bin` (`yt-dlp.prev`, `ffmpeg.prev`, `ffprobe.prev`), then renames the new file
+  over the live path, so the live path never goes missing. About -> roll back (or
+  `POST /api/tools/rollback`) swaps the `.prev` back in; it answers 412 when there is no
+  `.prev`. After a rollback the release you rolled away from is not reinstalled until you
+  force an update. `/data/bin/.staging` is scratch space and is deleted after each check.
+
+## Scratch space for yt-dlp (`/run/ytdlp`)
+
+The root filesystem is read-only and `/tmp` is a `noexec` tmpfs. The `yt-dlp_linux`
+binary is a PyInstaller onefile build that unpacks itself (about 45 MB) into `$TMPDIR` on
+every run, so the compose file mounts one dedicated executable tmpfs and points `TMPDIR`
+at it:
+
+```yaml
+tmpfs:
+  - /run/ytdlp:size=1g,uid=3100,gid=3100,mode=0700,exec
+environment:
+  TMPDIR: /run/ytdlp
+```
+
+It is 1 GB because a yt-dlp that is killed mid-run leaves its `_MEI*` directory behind and
+enough of them fill the mount, after which every run fails. Cellar removes orphans itself:
+before each yt-dlp run it deletes `_MEI*` directories older than 10 minutes that no
+running process has mapped. If you still see `No space left on device` from yt-dlp, look
+inside with `sudo docker exec cellar du -sh /run/ytdlp` and restart the app
+(`sudo midclt call -j app.redeploy cellar`), which empties the tmpfs. Do not add `exec`
+to any other mount.
 
 ## Adding a second storage location
 
@@ -240,7 +288,12 @@ A location is a bind mount plus a database row, so it takes both.
 - The read-only root filesystem with `tmpfs` on `/tmp` and `cap_drop: ALL` was
   verified to work with the nvidia runtime on this NAS.
 - Cellar probes NVENC/NVDEC at runtime and falls back to CPU; the Self-check page
-  says what it found, and GPU codecs are only offered in the rule UI when present.
+  says what it found, and GPU codecs are only offered in the rule UI when present. The
+  probe is a 10 frame test encode per encoder, not just the encoder list, because an
+  ffmpeg built for a newer NVENC API than the driver offers lists the encoders and then
+  cannot open one. That is why ffmpeg is pinned (see "Updating"); when the encoder is
+  unavailable, transcodes fall back to software SVT-AV1 at preset 8, CRF 35, under
+  `nice 19`, and an activity row says so.
 
 ## Google OAuth client
 
@@ -299,12 +352,28 @@ Optional, but it is how you seed years of history in one go.
 2. Under "All YouTube data included", choose only what you want: **history**,
    **playlists** (Watch Later, Liked) and **subscriptions**.
 3. Under "Multiple formats", set history to **JSON** (the other items export as CSV).
-4. Export once, download the `.zip`.
-5. In cellar: the Takeout page -> upload the zip, or the individual
-   `watch-history.json` / playlist CSVs / `subscriptions.csv`. The import is
-   idempotent and logged as an activity with counts. Entries without a video URL
-   (ads, removed videos) are skipped and counted. Unknown videos become metadata-only
-   records and are queued for a recheck; your rules decide whether to download them.
+4. Export once, download the archive (`.zip` or `.tgz`).
+5. In cellar: the Takeout page -> choose the account to import into, then upload the
+   archive, or the individual `watch-history.json` / playlist CSVs / `subscriptions.csv`
+   from inside it. Cellar accepts `.zip`, `.tgz` / `.tar.gz` and loose `.json` / `.csv`
+   files, up to 2 GB per request. It answers with a preview (rows per file, what will be
+   skipped) and starts the import as a background job. The import is idempotent
+   and logged as an activity with counts: re-uploading the same export creates nothing, and
+   a video's first-seen time only ever moves earlier. Entries without a video URL (ads,
+   removed videos) are skipped and counted. Only Watch Later and Liked videos become
+   sources; other playlists are counted but not imported. Unknown videos become
+   metadata-only records and are queued for a recheck; your rules decide whether to
+   download them.
+
+**Upload size.** Cloudflare caps one proxied request body at 100 MB on the Free and Pro
+plans, far below cellar's own 2 GB limit, so a large archive uploaded through the public
+hostname fails at the edge before cellar sees it. Upload the loose files from inside the
+archive instead (the history JSON, the playlist CSVs and `subscriptions.csv` are usually
+far smaller than the archive), one request each if needed.
+
+Failures come back as readable errors: "history exported as HTML" (re-export with history
+as JSON), "no Takeout files found", an unreadable `.tgz` / `.zip`, or an archive with a
+path outside itself (refused whole, nothing imported).
 
 Menu labels at Google change from time to time; the content to pick is history,
 playlists and subscriptions, with history as JSON.
@@ -386,6 +455,20 @@ still work without a PO token, but YouTube's bot wall will trip far more often.
 - 502 from Cloudflare: the tunnel origin is wrong. It must be
   `http://cellar.ix-cellar.svc.cluster.local:8080`; a bare `http://cellar:8080` does
   not resolve.
+
+**yt-dlp fails with "No space left on device".** The exec tmpfs `/run/ytdlp` is full of
+`_MEI*` directories from killed runs (see "Scratch space for yt-dlp"). Cellar prunes
+orphans older than 10 minutes before each feed run; a redeploy
+(`sudo midclt call -j app.redeploy cellar`) empties the mount.
+
+**Transcodes are slow and Activity says SVT-AV1 fallback.** NVENC does not open on this
+driver. Check the Self-check page's NVENC line and the ffmpeg build on About: a build
+newer than the pin needs driver 610 or newer. Set `tools.ffmpeg_release_tag` back to the
+default (`autobuild-2025-12-31-14-28`) and run About -> update, or roll ffmpeg back.
+
+**A Takeout upload fails right away or never finishes.** If the browser reports a network
+error or a Cloudflare error page for a big file, it hit Cloudflare's 100 MB request
+limit: upload the loose files from the archive instead (see "Takeout export").
 
 **Container restarts in a loop.** `sudo docker logs --tail 50 cellar`. On a new install
 it is almost always a missing `CF_ACCESS_AUD` or a malformed `CELLAR_SECRET_KEY`
