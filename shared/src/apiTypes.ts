@@ -996,3 +996,103 @@ export const SharePublicDataSchema = z.object({
 });
 export type SharePublicData = z.infer<typeof SharePublicDataSchema>;
 // --- end wave5A ---
+// --- wave5B ---
+// Google Takeout import (server/src/domain/takeout.ts, routes/takeout.ts,
+// jobs/handlers/takeout.ts).
+//   POST /api/takeout?account_id=  multipart: one or more files (.tgz / .tar.gz / .zip, or loose
+//        watch-history.json and *.csv); account_id may also be a form field
+//        -> 202 TakeoutUploadResponse | 400 { code: TakeoutErrorCode } | 404 (account) | 413
+//   GET  /api/takeout/:jobId -> TakeoutJobResponse
+//   GET  /api/activity?kind=takeout.imported -> previous imports; `data` is TakeoutCounts
+// The job is `takeout_import` (io class); progress arrives as SSE job.progress { id, pct }.
+// ---------------------------------------------------------------------------
+/** Hard cap on one upload request (all files together). */
+export const TAKEOUT_MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
+/** The file picker's accept list. */
+export const TAKEOUT_ACCEPT = ".tgz,.tar.gz,.zip,.json,.csv";
+export const TAKEOUT_ACTIVITY_KIND = "takeout.imported";
+export const TAKEOUT_JOB_TYPE = "takeout_import";
+
+/** Machine readable 4xx codes of POST /api/takeout (besides the generic `invalid`). */
+export const TAKEOUT_ERROR_CODES = [
+  "history_is_html",
+  "no_takeout_files",
+  "archive_unreadable",
+  "unsafe_archive",
+  "upload_too_large",
+  "no_files",
+] as const;
+export type TakeoutErrorCode = (typeof TAKEOUT_ERROR_CODES)[number];
+
+export const TakeoutFileKindSchema = z.union([
+  z.enum(["history", "watch_later", "liked", "subscription"]),
+  z.templateLiteral(["playlist:", z.string()]),
+]);
+
+export const TakeoutUploadQuerySchema = z.object({
+  account_id: z.coerce.number().int().positive(),
+});
+export type TakeoutUploadQuery = z.infer<typeof TakeoutUploadQuerySchema>;
+
+/** Row skip counts by reason (shared/src/takeout.ts TakeoutSkipReason). */
+const SkipCountsSchema = z.record(z.string(), z.number().int().nonnegative());
+
+export const TakeoutPreviewFileSchema = z.object({
+  /** The file's name in the upload or its path inside the archive. */
+  name: z.string(),
+  kind: TakeoutFileKindSchema,
+  /** Rows the dry parse produced (history entries, playlist videos, channels). */
+  rows: z.number().int().nonnegative(),
+  skipped_rows: SkipCountsSchema,
+});
+export type TakeoutPreviewFile = z.infer<typeof TakeoutPreviewFileSchema>;
+
+export const TakeoutSkippedFileSchema = z.object({ name: z.string(), reason: z.string() });
+export type TakeoutSkippedFile = z.infer<typeof TakeoutSkippedFileSchema>;
+
+export const TakeoutUploadResponseSchema = z.object({
+  job_id: z.number().int(),
+  files: z.array(TakeoutPreviewFileSchema),
+  /** Files that will not be imported, capped; `skipped_total` is the full count. */
+  skipped: z.array(TakeoutSkippedFileSchema),
+  skipped_total: z.number().int().nonnegative(),
+});
+export type TakeoutUploadResponse = z.infer<typeof TakeoutUploadResponseSchema>;
+
+/** What one import did. Stored as the `takeout.imported` activity row's data. */
+export const TakeoutCountsSchema = z.object({
+  account_id: z.number().int(),
+  /** History entries read (a video watched three times counts three). */
+  history: z.number().int().nonnegative(),
+  /** Distinct videos those entries name. */
+  history_videos: z.number().int().nonnegative(),
+  watch_later: z.number().int().nonnegative(),
+  liked: z.number().int().nonnegative(),
+  subscriptions: z.number().int().nonnegative(),
+  /** Playlists other than Watch later and Liked: counted, not imported (no playlist source). */
+  playlists_ignored: z.number().int().nonnegative(),
+  playlist_videos_ignored: z.number().int().nonnegative(),
+  /** Videos the catalog did not know; created metadata-only and queued for a recheck. */
+  new_videos: z.number().int().nonnegative(),
+  /** video_sources and channel_sources rows created (0 on a repeat import). */
+  new_sources: z.number().int().nonnegative(),
+  /** Rows and files skipped, by reason. */
+  skipped: SkipCountsSchema,
+  /** recheck_batch jobs queued; null when no recheck handler is registered. */
+  recheck_jobs: z.number().int().nonnegative().nullable(),
+  duration_ms: z.number().int().nonnegative(),
+});
+export type TakeoutCounts = z.infer<typeof TakeoutCountsSchema>;
+
+export const TakeoutJobResponseSchema = z.object({
+  job_id: z.number().int(),
+  status: JobStatusSchema,
+  error: z.string().nullable(),
+  created_at: z.number(),
+  finished_at: z.number().nullable(),
+  files: z.array(z.object({ name: z.string(), kind: TakeoutFileKindSchema })),
+  /** Present once the import finished. */
+  counts: TakeoutCountsSchema.nullable(),
+});
+export type TakeoutJobResponse = z.infer<typeof TakeoutJobResponseSchema>;
+// --- end wave5B ---
