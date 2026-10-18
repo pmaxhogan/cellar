@@ -34,8 +34,11 @@ async function mountPage(component: Component, api: ApiClient = stubApi()) {
   return wrapper;
 }
 
+/** Pages that are no longer stubs; each has its own suite under test/<area>/. */
+const IMPLEMENTED = new Set(["/about", "/notifications", "/activity", "/self-check"]);
+
 describe("page stubs", () => {
-  for (const link of NAV_LINKS.filter((candidate) => candidate.to !== "/about")) {
+  for (const link of NAV_LINKS.filter((candidate) => !IMPLEMENTED.has(candidate.to))) {
     it(`${link.label} renders its header and an empty state`, async () => {
       const wrapper = await mountPage(await load(link.to));
       expect(wrapper.find("h1").text()).toBe(link.label);
