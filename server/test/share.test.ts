@@ -13,7 +13,7 @@ import {
 import { createTempApp, type TempApp } from "./helpers.ts";
 
 /**
- * The public /s surface. No share links exist yet, so every token is unknown
+ * The public /s surface without share links: every token is unknown
  * and must get the same 404 page with the same headers.
  */
 
