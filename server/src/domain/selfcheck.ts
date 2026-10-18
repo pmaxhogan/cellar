@@ -290,11 +290,10 @@ export async function probeGpu(deps: Pick<SelfCheckDeps, "runTool">): Promise<Gp
   const listing = encoders.code === 0 ? encoders.stdout : "";
   const hevcListed = /\bhevc_nvenc\b/.test(listing);
   const h264Listed = /\bh264_nvenc\b/.test(listing);
-  const [hevcEncodes, h264Encodes, hwaccels] = await Promise.all([
-    hevcListed ? encodeWorks(deps, "hevc_nvenc") : Promise.resolve(false),
-    h264Listed ? encodeWorks(deps, "h264_nvenc") : Promise.resolve(false),
-    tryRun(deps, "ffmpeg", ["-hide_banner", "-hwaccels"]),
-  ]);
+  // One test encode at a time: consumer GPUs cap concurrent NVENC sessions.
+  const hevcEncodes = hevcListed && (await encodeWorks(deps, "hevc_nvenc"));
+  const h264Encodes = h264Listed && (await encodeWorks(deps, "h264_nvenc"));
+  const hwaccels = await tryRun(deps, "ffmpeg", ["-hide_banner", "-hwaccels"]);
   const nvdec =
     hwaccels?.code === 0 && hwaccels.stdout.split(/\r?\n/).some((line) => line.trim() === "cuda");
   return { ffmpegMissing: false, hevcListed, h264Listed, hevcEncodes, h264Encodes, nvdec };
