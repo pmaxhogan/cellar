@@ -1,0 +1,937 @@
+{
+  "id": "dQw4w9WgXcQ",
+  "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+  "fulltitle": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+  "formats": [
+    {
+      "format_id": "sb1",
+      "format_note": "storyboard",
+      "ext": "mhtml",
+      "protocol": "mhtml",
+      "acodec": "none",
+      "vcodec": "none",
+      "url": "https://i.ytimg.com/sb/dQw4w9WgXcQ/storyboard3_L1/M$M.jpg?sqp=fake",
+      "width": 80,
+      "height": 45,
+      "fps": 0.1,
+      "rows": 5,
+      "columns": 5,
+      "fragments": [
+        {
+          "url": "https://i.ytimg.com/sb/dQw4w9WgXcQ/storyboard3_L1/M0.jpg?sqp=fake",
+          "duration": 100
+        },
+        {
+          "url": "https://i.ytimg.com/sb/dQw4w9WgXcQ/storyboard3_L1/M1.jpg?sqp=fake",
+          "duration": 100
+        },
+        {
+          "url": "https://i.ytimg.com/sb/dQw4w9WgXcQ/storyboard3_L1/M2.jpg?sqp=fake",
+          "duration": 100
+        }
+      ],
+      "resolution": "80x45",
+      "aspect_ratio": 1.78,
+      "format": "sb1 - 80x45 (storyboard)",
+      "audio_ext": "none",
+      "video_ext": "none",
+      "dynamic_range": null,
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "sb0",
+      "format_note": "storyboard",
+      "ext": "mhtml",
+      "protocol": "mhtml",
+      "acodec": "none",
+      "vcodec": "none",
+      "url": "https://i.ytimg.com/sb/dQw4w9WgXcQ/storyboard3_L0/M$M.jpg?sqp=fake",
+      "width": 160,
+      "height": 90,
+      "fps": 0.1,
+      "rows": 5,
+      "columns": 5,
+      "fragments": [
+        {
+          "url": "https://i.ytimg.com/sb/dQw4w9WgXcQ/storyboard3_L0/M0.jpg?sqp=fake",
+          "duration": 100
+        }
+      ],
+      "resolution": "160x90",
+      "aspect_ratio": 1.78,
+      "format": "sb0 - 160x90 (storyboard)",
+      "audio_ext": "none",
+      "video_ext": "none",
+      "dynamic_range": null,
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "139",
+      "format_note": "low",
+      "ext": "m4a",
+      "protocol": "https",
+      "acodec": "mp4a.40.5",
+      "vcodec": "none",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=139&source=youtube",
+      "width": null,
+      "height": null,
+      "fps": null,
+      "abr": 48.8,
+      "asr": 22050,
+      "tbr": 48.8,
+      "audio_channels": 2,
+      "language": "en",
+      "language_preference": -1,
+      "quality": 3,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 1304625,
+      "filesize_approx": 1304625,
+      "format": "139 - audio only (low)",
+      "resolution": "audio only",
+      "audio_ext": "m4a",
+      "video_ext": "none",
+      "container": "m4a_dash",
+      "dynamic_range": null,
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "249",
+      "format_note": "low",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "opus",
+      "vcodec": "none",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=249&source=youtube",
+      "width": null,
+      "height": null,
+      "fps": null,
+      "abr": 50.4,
+      "asr": 48000,
+      "tbr": 50.4,
+      "audio_channels": 2,
+      "language": "en",
+      "language_preference": -1,
+      "quality": 3,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 1331250,
+      "filesize_approx": 1331250,
+      "format": "249 - audio only (low)",
+      "resolution": "audio only",
+      "audio_ext": "webm",
+      "video_ext": "none",
+      "container": "webm_dash",
+      "dynamic_range": null,
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "250",
+      "format_note": "low",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "opus",
+      "vcodec": "none",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=250&source=youtube",
+      "width": null,
+      "height": null,
+      "fps": null,
+      "abr": 66.2,
+      "asr": 48000,
+      "tbr": 66.2,
+      "audio_channels": 2,
+      "language": "en",
+      "language_preference": -1,
+      "quality": 3,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 1757250,
+      "filesize_approx": 1757250,
+      "format": "250 - audio only (low)",
+      "resolution": "audio only",
+      "audio_ext": "webm",
+      "video_ext": "none",
+      "container": "webm_dash",
+      "dynamic_range": null,
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "140",
+      "format_note": "medium",
+      "ext": "m4a",
+      "protocol": "https",
+      "acodec": "mp4a.40.2",
+      "vcodec": "none",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=140&source=youtube",
+      "width": null,
+      "height": null,
+      "fps": null,
+      "abr": 129.5,
+      "asr": 44100,
+      "tbr": 129.5,
+      "audio_channels": 2,
+      "language": "en",
+      "language_preference": -1,
+      "quality": 3,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 3434625,
+      "filesize_approx": 3434625,
+      "format": "140 - audio only (medium)",
+      "resolution": "audio only",
+      "audio_ext": "m4a",
+      "video_ext": "none",
+      "container": "m4a_dash",
+      "dynamic_range": null,
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "251",
+      "format_note": "medium",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "opus",
+      "vcodec": "none",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=251&source=youtube",
+      "width": null,
+      "height": null,
+      "fps": null,
+      "abr": 135.1,
+      "asr": 48000,
+      "tbr": 135.1,
+      "audio_channels": 2,
+      "language": "en",
+      "language_preference": -1,
+      "quality": 3,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 3594375,
+      "filesize_approx": 3594375,
+      "format": "251 - audio only (medium)",
+      "resolution": "audio only",
+      "audio_ext": "webm",
+      "video_ext": "none",
+      "container": "webm_dash",
+      "dynamic_range": null,
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "18",
+      "format_note": "360p",
+      "ext": "mp4",
+      "protocol": "https",
+      "acodec": "mp4a.40.2",
+      "vcodec": "avc1.42001E",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=18&source=youtube",
+      "width": 640,
+      "height": 360,
+      "fps": 30,
+      "tbr": 560,
+      "abr": 96,
+      "asr": 44100,
+      "audio_channels": 2,
+      "quality": 6,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize_approx": 14910000,
+      "format": "18 - 640x360 (360p)",
+      "resolution": "640x360",
+      "aspect_ratio": 1.78,
+      "audio_ext": "m4a",
+      "video_ext": "mp4",
+      "container": "mp4",
+      "dynamic_range": "SDR",
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "136",
+      "format_note": "720p",
+      "ext": "mp4",
+      "protocol": "https",
+      "acodec": "none",
+      "vcodec": "avc1.640028",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=136&source=youtube",
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "vbr": 1180,
+      "tbr": 1180,
+      "quality": 7,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 31417500,
+      "filesize_approx": 31417500,
+      "format": "136 - 1280x720 (720p)",
+      "resolution": "1280x720",
+      "aspect_ratio": 1.78,
+      "audio_ext": "none",
+      "video_ext": "mp4",
+      "container": "mp4_dash",
+      "dynamic_range": "SDR",
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "247",
+      "format_note": "720p",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "none",
+      "vcodec": "vp09.00.40.08",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=247&source=youtube",
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "vbr": 1010,
+      "tbr": 1010,
+      "quality": 7,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 26891250,
+      "filesize_approx": 26891250,
+      "format": "247 - 1280x720 (720p)",
+      "resolution": "1280x720",
+      "aspect_ratio": 1.78,
+      "audio_ext": "none",
+      "video_ext": "webm",
+      "container": "webm_dash",
+      "dynamic_range": "SDR",
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "398",
+      "format_note": "720p",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "none",
+      "vcodec": "av01.0.08M.08",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=398&source=youtube",
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "vbr": 790,
+      "tbr": 790,
+      "quality": 7,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 21033750,
+      "filesize_approx": 21033750,
+      "format": "398 - 1280x720 (720p)",
+      "resolution": "1280x720",
+      "aspect_ratio": 1.78,
+      "audio_ext": "none",
+      "video_ext": "webm",
+      "container": "webm_dash",
+      "dynamic_range": "SDR",
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "137",
+      "format_note": "1080p",
+      "ext": "mp4",
+      "protocol": "https",
+      "acodec": "none",
+      "vcodec": "avc1.640028",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=137&source=youtube",
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "vbr": 2640,
+      "tbr": 2640,
+      "quality": 9,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 70290000,
+      "filesize_approx": 70290000,
+      "format": "137 - 1920x1080 (1080p)",
+      "resolution": "1920x1080",
+      "aspect_ratio": 1.78,
+      "audio_ext": "none",
+      "video_ext": "mp4",
+      "container": "mp4_dash",
+      "dynamic_range": "SDR",
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "248",
+      "format_note": "1080p",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "none",
+      "vcodec": "vp09.00.40.08",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=248&source=youtube",
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "vbr": 1830,
+      "tbr": 1830,
+      "quality": 9,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 48723750,
+      "filesize_approx": 48723750,
+      "format": "248 - 1920x1080 (1080p)",
+      "resolution": "1920x1080",
+      "aspect_ratio": 1.78,
+      "audio_ext": "none",
+      "video_ext": "webm",
+      "container": "webm_dash",
+      "dynamic_range": "SDR",
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    },
+    {
+      "format_id": "399",
+      "format_note": "1080p",
+      "ext": "webm",
+      "protocol": "https",
+      "acodec": "none",
+      "vcodec": "av01.0.08M.08",
+      "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=399&source=youtube",
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "vbr": 1320,
+      "tbr": 1320,
+      "quality": 9,
+      "has_drm": false,
+      "source_preference": -1,
+      "filesize": 35145000,
+      "filesize_approx": 35145000,
+      "format": "399 - 1920x1080 (1080p)",
+      "resolution": "1920x1080",
+      "aspect_ratio": 1.78,
+      "audio_ext": "none",
+      "video_ext": "webm",
+      "container": "webm_dash",
+      "dynamic_range": "SDR",
+      "downloader_options": {
+        "http_chunk_size": 10485760
+      },
+      "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Sec-Fetch-Mode": "navigate"
+      }
+    }
+  ],
+  "thumbnails": [
+    {
+      "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
+      "height": 90,
+      "width": 120,
+      "preference": -37,
+      "id": "0",
+      "resolution": "120x90"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+      "height": 180,
+      "width": 320,
+      "preference": -33,
+      "id": "1",
+      "resolution": "320x180"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      "height": 360,
+      "width": 480,
+      "preference": -29,
+      "id": "2",
+      "resolution": "480x360"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg",
+      "height": 480,
+      "width": 640,
+      "preference": -25,
+      "id": "3",
+      "resolution": "640x480"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg",
+      "height": 720,
+      "width": 1280,
+      "preference": -21,
+      "id": "4",
+      "resolution": "1280x720"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+      "height": 1080,
+      "width": 1920,
+      "preference": -17,
+      "id": "5",
+      "resolution": "1920x1080"
+    }
+  ],
+  "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+  "description": "Synthetic description for Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster).\n\nGenerated by the cellar fake yt-dlp shim.",
+  "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+  "channel_url": "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+  "duration": 213,
+  "view_count": 1650000000,
+  "average_rating": null,
+  "age_limit": 0,
+  "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "categories": ["Music"],
+  "tags": ["rick astley", "never gonna give you up", "nggyu", "rickroll"],
+  "playable_in_embed": true,
+  "live_status": "not_live",
+  "media_type": "video",
+  "release_timestamp": null,
+  "_format_sort_fields": [
+    "quality",
+    "res",
+    "fps",
+    "hdr:12",
+    "source",
+    "vcodec",
+    "channels",
+    "acodec"
+  ],
+  "automatic_captions": {
+    "en": [
+      {
+        "ext": "vtt",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=vtt&kind=asr",
+        "name": "English (auto-generated)"
+      },
+      {
+        "ext": "ttml",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=ttml&kind=asr",
+        "name": "English (auto-generated)"
+      },
+      {
+        "ext": "srv3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv3&kind=asr",
+        "name": "English (auto-generated)"
+      },
+      {
+        "ext": "srv2",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv2&kind=asr",
+        "name": "English (auto-generated)"
+      },
+      {
+        "ext": "srv1",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv1&kind=asr",
+        "name": "English (auto-generated)"
+      },
+      {
+        "ext": "json3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=json3&kind=asr",
+        "name": "English (auto-generated)"
+      }
+    ],
+    "en-orig": [
+      {
+        "ext": "vtt",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=vtt&kind=asr&tlang=en-orig",
+        "name": "English (Original)"
+      },
+      {
+        "ext": "ttml",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=ttml&kind=asr&tlang=en-orig",
+        "name": "English (Original)"
+      },
+      {
+        "ext": "srv3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv3&kind=asr&tlang=en-orig",
+        "name": "English (Original)"
+      },
+      {
+        "ext": "srv2",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv2&kind=asr&tlang=en-orig",
+        "name": "English (Original)"
+      },
+      {
+        "ext": "srv1",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv1&kind=asr&tlang=en-orig",
+        "name": "English (Original)"
+      },
+      {
+        "ext": "json3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=json3&kind=asr&tlang=en-orig",
+        "name": "English (Original)"
+      }
+    ],
+    "de": [
+      {
+        "ext": "vtt",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=vtt&tlang=de",
+        "name": "German"
+      },
+      {
+        "ext": "ttml",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=ttml&tlang=de",
+        "name": "German"
+      },
+      {
+        "ext": "srv3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv3&tlang=de",
+        "name": "German"
+      },
+      {
+        "ext": "srv2",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv2&tlang=de",
+        "name": "German"
+      },
+      {
+        "ext": "srv1",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv1&tlang=de",
+        "name": "German"
+      },
+      {
+        "ext": "json3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=json3&tlang=de",
+        "name": "German"
+      }
+    ],
+    "es": [
+      {
+        "ext": "vtt",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=vtt&tlang=es",
+        "name": "Spanish"
+      },
+      {
+        "ext": "ttml",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=ttml&tlang=es",
+        "name": "Spanish"
+      },
+      {
+        "ext": "srv3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv3&tlang=es",
+        "name": "Spanish"
+      },
+      {
+        "ext": "srv2",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv2&tlang=es",
+        "name": "Spanish"
+      },
+      {
+        "ext": "srv1",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv1&tlang=es",
+        "name": "Spanish"
+      },
+      {
+        "ext": "json3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=json3&tlang=es",
+        "name": "Spanish"
+      }
+    ],
+    "fr": [
+      {
+        "ext": "vtt",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=vtt&tlang=fr",
+        "name": "French"
+      },
+      {
+        "ext": "ttml",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=ttml&tlang=fr",
+        "name": "French"
+      },
+      {
+        "ext": "srv3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv3&tlang=fr",
+        "name": "French"
+      },
+      {
+        "ext": "srv2",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv2&tlang=fr",
+        "name": "French"
+      },
+      {
+        "ext": "srv1",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv1&tlang=fr",
+        "name": "French"
+      },
+      {
+        "ext": "json3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=json3&tlang=fr",
+        "name": "French"
+      }
+    ]
+  },
+  "subtitles": {
+    "en": [
+      {
+        "ext": "vtt",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=vtt",
+        "name": "English"
+      },
+      {
+        "ext": "ttml",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=ttml",
+        "name": "English"
+      },
+      {
+        "ext": "srv3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv3",
+        "name": "English"
+      },
+      {
+        "ext": "srv2",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv2",
+        "name": "English"
+      },
+      {
+        "ext": "srv1",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=srv1",
+        "name": "English"
+      },
+      {
+        "ext": "json3",
+        "url": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&fmt=json3",
+        "name": "English"
+      }
+    ]
+  },
+  "comment_count": 2400000,
+  "chapters": null,
+  "heatmap": null,
+  "like_count": 18700000,
+  "channel": "Rick Astley",
+  "channel_follower_count": 4300000,
+  "channel_is_verified": true,
+  "uploader": "Rick Astley",
+  "uploader_id": "@RickAstleyYT",
+  "uploader_url": "https://www.youtube.com/@RickAstleyYT",
+  "upload_date": "20091025",
+  "timestamp": 1256453853,
+  "availability": "public",
+  "original_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "webpage_url_basename": "watch",
+  "webpage_url_domain": "youtube.com",
+  "extractor": "youtube",
+  "extractor_key": "Youtube",
+  "playlist": null,
+  "playlist_index": null,
+  "display_id": "dQw4w9WgXcQ",
+  "duration_string": "3:33",
+  "is_live": false,
+  "was_live": false,
+  "requested_subtitles": null,
+  "_has_drm": null,
+  "epoch": 1792300000,
+  "requested_downloads": [
+    {
+      "requested_formats": [
+        {
+          "format_id": "399",
+          "format_note": "1080p",
+          "ext": "webm",
+          "protocol": "https",
+          "acodec": "none",
+          "vcodec": "av01.0.08M.08",
+          "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=399&source=youtube",
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "vbr": 1320,
+          "tbr": 1320,
+          "quality": 9,
+          "has_drm": false,
+          "source_preference": -1,
+          "filesize": 35145000,
+          "filesize_approx": 35145000,
+          "format": "399 - 1920x1080 (1080p)",
+          "resolution": "1920x1080",
+          "aspect_ratio": 1.78,
+          "audio_ext": "none",
+          "video_ext": "webm",
+          "container": "webm_dash",
+          "dynamic_range": "SDR",
+          "downloader_options": {
+            "http_chunk_size": 10485760
+          },
+          "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-us,en;q=0.5",
+            "Sec-Fetch-Mode": "navigate"
+          }
+        },
+        {
+          "format_id": "251",
+          "format_note": "medium",
+          "ext": "webm",
+          "protocol": "https",
+          "acodec": "opus",
+          "vcodec": "none",
+          "url": "https://rr1---sn-fakefake.googlevideo.com/videoplayback?expire=1797000000&ei=fake&id=dQw4w9WgXcQ&itag=251&source=youtube",
+          "width": null,
+          "height": null,
+          "fps": null,
+          "abr": 135.1,
+          "asr": 48000,
+          "tbr": 135.1,
+          "audio_channels": 2,
+          "language": "en",
+          "language_preference": -1,
+          "quality": 3,
+          "has_drm": false,
+          "source_preference": -1,
+          "filesize": 3594375,
+          "filesize_approx": 3594375,
+          "format": "251 - audio only (medium)",
+          "resolution": "audio only",
+          "audio_ext": "webm",
+          "video_ext": "none",
+          "container": "webm_dash",
+          "dynamic_range": null,
+          "downloader_options": {
+            "http_chunk_size": 10485760
+          },
+          "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) fake",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-us,en;q=0.5",
+            "Sec-Fetch-Mode": "navigate"
+          }
+        }
+      ],
+      "format": "399 - 1920x1080 (1080p)+251 - audio only (medium)",
+      "format_id": "399+251",
+      "ext": "webm",
+      "protocol": "https+https",
+      "language": "en",
+      "format_note": "1080p",
+      "filesize_approx": null,
+      "tbr": 1455.1,
+      "width": 1920,
+      "height": 1080,
+      "resolution": "1920x1080",
+      "fps": 30,
+      "dynamic_range": "SDR",
+      "vcodec": "av01.0.08M.08",
+      "vbr": 1320,
+      "stretched_ratio": null,
+      "aspect_ratio": 1.78,
+      "acodec": "opus",
+      "abr": 135.1,
+      "asr": 48000,
+      "audio_channels": 2
+    }
+  ],
+  "format": "399 - 1920x1080 (1080p)+251 - audio only (medium)",
+  "format_id": "399+251",
+  "ext": "webm",
+  "protocol": "https+https",
+  "language": "en",
+  "format_note": "1080p",
+  "filesize_approx": null,
+  "tbr": 1455.1,
+  "width": 1920,
+  "height": 1080,
+  "resolution": "1920x1080",
+  "fps": 30,
+  "dynamic_range": "SDR",
+  "vcodec": "av01.0.08M.08",
+  "vbr": 1320,
+  "aspect_ratio": 1.78,
+  "acodec": "opus",
+  "abr": 135.1,
+  "asr": 48000,
+  "audio_channels": 2,
+  "_type": "video",
+  "_version": {
+    "version": "2026.08.19-fake",
+    "current_git_head": null,
+    "release_git_head": "0000000000000000000000000000000000000000",
+    "repository": "yt-dlp/yt-dlp"
+  }
+}

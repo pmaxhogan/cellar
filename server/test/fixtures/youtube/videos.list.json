@@ -1,0 +1,243 @@
+{
+  "kind": "youtube#videoListResponse",
+  "etag": "09vvrO9J0bXfgfzt1eMHh5vlEOk",
+  "items": [
+    {
+      "kind": "youtube#video",
+      "etag": "w2f5rb2cwpNtU6moKOql8FtLzvA",
+      "id": "dQw4w9WgXcQ",
+      "snippet": {
+        "publishedAt": "2009-10-25T06:57:33Z",
+        "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw",
+        "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+        "description": "Synthetic description for Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster).",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "Rick Astley",
+        "tags": ["rick astley", "never gonna give you up", "nggyu", "rickroll"],
+        "categoryId": "10",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+          "description": "Synthetic description for Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)."
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "PT3M33S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "true",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "statistics": {
+        "viewCount": "1650000000",
+        "likeCount": "18700000",
+        "favoriteCount": "0",
+        "commentCount": "2400000"
+      },
+      "status": {
+        "uploadStatus": "processed",
+        "privacyStatus": "public",
+        "license": "youtube",
+        "embeddable": true,
+        "publicStatsViewable": true,
+        "madeForKids": false
+      },
+      "topicDetails": {
+        "topicCategories": [
+          "https://en.wikipedia.org/wiki/Pop_music",
+          "https://en.wikipedia.org/wiki/Music_of_Asia"
+        ]
+      }
+    },
+    {
+      "kind": "youtube#video",
+      "etag": "qB5UOPrnRtmCf7iI5dgC65+vWnk",
+      "id": "jNQXAC9IVRw",
+      "snippet": {
+        "publishedAt": "2005-04-24T03:31:52Z",
+        "channelId": "UC4QobU6STFB0P71PMvOGN5A",
+        "title": "Me at the zoo",
+        "description": "Synthetic description for Me at the zoo.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/jNQXAC9IVRw/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "jawed",
+        "tags": ["jawed karim", "elephant", "zoo"],
+        "categoryId": "22",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "Me at the zoo",
+          "description": "Synthetic description for Me at the zoo."
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "PT19S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "true",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "statistics": {
+        "viewCount": "340000000",
+        "likeCount": "14000000",
+        "favoriteCount": "0",
+        "commentCount": "11000000"
+      },
+      "status": {
+        "uploadStatus": "processed",
+        "privacyStatus": "unlisted",
+        "license": "youtube",
+        "embeddable": true,
+        "publicStatsViewable": true,
+        "madeForKids": false
+      },
+      "topicDetails": {
+        "topicCategories": [
+          "https://en.wikipedia.org/wiki/Knowledge",
+          "https://en.wikipedia.org/wiki/Society"
+        ]
+      }
+    },
+    {
+      "kind": "youtube#video",
+      "etag": "seXa6sp8AMO727boN4GIwjISyJk",
+      "id": "aircAruvnKk",
+      "snippet": {
+        "publishedAt": "2026-11-02T15:00:00Z",
+        "channelId": "UCYO_jab_esuFRV4b17AJtAw",
+        "title": "But what is a neural network? | Deep learning chapter 1",
+        "description": "Synthetic description for But what is a neural network? | Deep learning chapter 1.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/aircAruvnKk/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "3Blue1Brown",
+        "tags": ["neural network", "deep learning", "3blue1brown"],
+        "categoryId": "27",
+        "liveBroadcastContent": "upcoming",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "But what is a neural network? | Deep learning chapter 1",
+          "description": "Synthetic description for But what is a neural network? | Deep learning chapter 1."
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "P0D",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "false",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "statistics": {
+        "viewCount": "0",
+        "favoriteCount": "0",
+        "commentCount": "0"
+      },
+      "status": {
+        "uploadStatus": "processed",
+        "privacyStatus": "public",
+        "license": "youtube",
+        "embeddable": true,
+        "publicStatsViewable": true,
+        "madeForKids": false
+      },
+      "topicDetails": {
+        "topicCategories": [
+          "https://en.wikipedia.org/wiki/Knowledge",
+          "https://en.wikipedia.org/wiki/Society"
+        ]
+      },
+      "liveStreamingDetails": {
+        "scheduledStartTime": "2026-11-02T15:00:00Z"
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 3,
+    "resultsPerPage": 3
+  }
+}

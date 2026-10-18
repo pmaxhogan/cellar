@@ -1,0 +1,4 @@
+#!/bin/sh
+# Thin launcher. The shim logic lives in ffmpeg.mjs (Node ESM) so it also runs on Windows.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "${FAKE_BIN_NODE:-node}" "$dir/ffmpeg.mjs" "$@"

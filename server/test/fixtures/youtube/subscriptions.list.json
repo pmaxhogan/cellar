@@ -1,0 +1,72 @@
+{
+  "kind": "youtube#subscriptionListResponse",
+  "etag": "CkdE281tzdikq9/sm5EMgVkiB1I",
+  "pageInfo": {
+    "totalResults": 2,
+    "resultsPerPage": 50
+  },
+  "items": [
+    {
+      "kind": "youtube#subscription",
+      "etag": "iy/NSG6BWQK/3qlSXCkV3uGTNuU",
+      "id": "PlstiM2gdddk_aFUdf8lElmYSHssdX6lU_e41_SI",
+      "snippet": {
+        "publishedAt": "2024-03-14T17:22:09Z",
+        "title": "3Blue1Brown",
+        "description": "3Blue1Brown, by Grant Sanderson, is some combination of math and entertainment.",
+        "resourceId": {
+          "kind": "youtube#channel",
+          "channelId": "UCYO_jab_esuFRV4b17AJtAw"
+        },
+        "channelId": "UCFakeAccountChannel0001",
+        "thumbnails": {
+          "default": {
+            "url": "https://yt3.ggpht.com/fake/UCYO_jab_esuFRV4b17AJtAw/s88-c-k-c0x00ffffff-no-rj"
+          },
+          "medium": {
+            "url": "https://yt3.ggpht.com/fake/UCYO_jab_esuFRV4b17AJtAw/s240-c-k-c0x00ffffff-no-rj"
+          },
+          "high": {
+            "url": "https://yt3.ggpht.com/fake/UCYO_jab_esuFRV4b17AJtAw/s800-c-k-c0x00ffffff-no-rj"
+          }
+        }
+      },
+      "contentDetails": {
+        "totalItemCount": 190,
+        "newItemCount": 2,
+        "activityType": "all"
+      }
+    },
+    {
+      "kind": "youtube#subscription",
+      "etag": "T1g/gJb1BIwJK60+GwpP5HkQwfA",
+      "id": "iHQtawB7A2KAUsMPQ1866GVbjscv82TZjrFAqj_0",
+      "snippet": {
+        "publishedAt": "2023-11-02T09:41:50Z",
+        "title": "Veritasium",
+        "description": "An element of truth - videos about science, education, and anything else I find interesting.",
+        "resourceId": {
+          "kind": "youtube#channel",
+          "channelId": "UCHnyfMqiRRG1u-2MsSQLbXA"
+        },
+        "channelId": "UCFakeAccountChannel0001",
+        "thumbnails": {
+          "default": {
+            "url": "https://yt3.ggpht.com/fake/UCHnyfMqiRRG1u-2MsSQLbXA/s88-c-k-c0x00ffffff-no-rj"
+          },
+          "medium": {
+            "url": "https://yt3.ggpht.com/fake/UCHnyfMqiRRG1u-2MsSQLbXA/s240-c-k-c0x00ffffff-no-rj"
+          },
+          "high": {
+            "url": "https://yt3.ggpht.com/fake/UCHnyfMqiRRG1u-2MsSQLbXA/s800-c-k-c0x00ffffff-no-rj"
+          }
+        }
+      },
+      "contentDetails": {
+        "totalItemCount": 420,
+        "newItemCount": 0,
+        "activityType": "all"
+      }
+    }
+  ]
+}
