@@ -68,9 +68,9 @@ export function measureLocation(filter: LocationFilter): number {
   return filter === "all" ? ALL_LOCATIONS_ID : filter;
 }
 
-function baseOptions(
+export function baseOptions(
   theme: ChartTheme,
-  input: { format: ValueFormat; yTitle: string; legend: boolean },
+  input: { format: ValueFormat; yTitle: string; legend: boolean; xTitle?: string },
 ): ChartOptions<ChartKind> {
   return {
     responsive: true,
@@ -99,7 +99,7 @@ function baseOptions(
     },
     scales: {
       x: {
-        title: { display: true, text: "Day (UTC)", color: theme.muted },
+        title: { display: true, text: input.xTitle ?? "Day (UTC)", color: theme.muted },
         grid: { display: false },
         border: { color: theme.axis },
         ticks: {
@@ -154,13 +154,18 @@ function lineDataset(
   };
 }
 
-function barDataset(label: string, data: Series, theme: ChartTheme) {
+export function barDataset(
+  label: string,
+  data: Series,
+  theme: ChartTheme,
+  color: string = theme.accent,
+) {
   return {
     type: "bar" as const,
     label,
     data,
-    backgroundColor: theme.accent,
-    hoverBackgroundColor: theme.accent,
+    backgroundColor: color,
+    hoverBackgroundColor: color,
     borderColor: theme.surface,
     borderWidth: { left: 1, right: 1, top: 0, bottom: 0 },
     borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },

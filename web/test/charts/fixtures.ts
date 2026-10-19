@@ -1,5 +1,11 @@
 import { defineComponent, h, type PropType } from "vue";
-import type { StatsDailyPoint, StatsDailyResponse, StatsSummary } from "@cellar/shared";
+import type {
+  StatsDailyPoint,
+  StatsDailyResponse,
+  StatsHourlyPoint,
+  StatsHourlyResponse,
+  StatsSummary,
+} from "@cellar/shared";
 
 /** A stand-in for PrimeVue's Chart: happy-dom has no canvas, and tests want the config. */
 export const ChartStub = defineComponent({
@@ -77,6 +83,52 @@ export function makeSummary(overrides: Partial<StatsSummary> = {}): StatsSummary
     api_units_budget: 10_000,
     downloads_7d: 21,
     downloads_30d: 90,
+    ...overrides,
+  };
+}
+
+export const HOURLY_FROM = Date.UTC(2026, 10, 17, 13);
+const HOUR = 3_600_000;
+
+export function hourPoint(index: number, values: Partial<StatsHourlyPoint> = {}): StatsHourlyPoint {
+  return {
+    hour: HOURLY_FROM + index * HOUR,
+    downloads: 0,
+    download_bytes: 0,
+    jobs_done: 0,
+    jobs_failed: 0,
+    videos_added: 0,
+    videos_gone: 0,
+    scrape_requests: 0,
+    ...values,
+  };
+}
+
+/** 24 hours, all zero except hour 0 and the last (current) hour. */
+export function makeHourly(overrides: Partial<StatsHourlyResponse> = {}): StatsHourlyResponse {
+  const points = Array.from({ length: 24 }, (_, index) => hourPoint(index));
+  points[0] = hourPoint(0, {
+    downloads: 2,
+    download_bytes: 2048,
+    jobs_done: 3,
+    jobs_failed: 1,
+    videos_added: 5,
+    videos_gone: 1,
+    scrape_requests: 7,
+  });
+  points[23] = hourPoint(23, { downloads: 1, download_bytes: 1024, jobs_done: 1 });
+  return {
+    hours: 24,
+    from: HOURLY_FROM,
+    to: HOURLY_FROM + 24 * HOUR,
+    location_id: 0,
+    points,
+    bytes_used: 3 * 1024 ** 3,
+    api_units_today: 8500,
+    locations: [
+      { id: 1, label: "media" },
+      { id: 2, label: "second" },
+    ],
     ...overrides,
   };
 }

@@ -3,19 +3,27 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Button from "primevue/button";
 import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
-import type { StatsDailyResponse, StatsLocationRef, StatsSummary } from "@cellar/shared";
+import type {
+  StatsDailyResponse,
+  StatsHourlyResponse,
+  StatsLocationRef,
+  StatsSummary,
+} from "@cellar/shared";
 import { normalizeError, type ApiClientError } from "../api/client.ts";
 import { useApi } from "../api/provide.ts";
 import {
   getDailyStats,
+  getHourlyStats,
   getStatsSummary,
+  HOURLY_REFRESH_MS,
   rangeWindow,
-  RANGE_DAYS,
+  RANGE_HOURLY,
+  RANGE_OPTIONS,
   runStatsRollup,
+  type ChartRange,
   type LocationFilter,
-  type RangeDays,
 } from "../api/stats.ts";
-import { pluralize } from "../lib/format.ts";
+import { formatBytes, formatNumber, pluralize } from "../lib/format.ts";
 import { useToaster } from "../lib/toast.ts";
 import { useThemeStore } from "../stores/theme.ts";
 import EmptyState from "../components/EmptyState.vue";
@@ -24,6 +32,8 @@ import ListSkeleton from "../components/ListSkeleton.vue";
 import PageHeader from "../components/PageHeader.vue";
 import ChartCard from "../components/charts/ChartCard.vue";
 import { chartTheme } from "../components/charts/chartTheme.ts";
+import HourlyTable from "../components/charts/HourlyTable.vue";
+import { hourlyBarChart, hourlyJobsChart } from "../components/charts/hourlySeries.ts";
 import PointsTable from "../components/charts/PointsTable.vue";
 import SummaryStrip from "../components/charts/SummaryStrip.vue";
 import {
@@ -39,7 +49,7 @@ const api = useApi();
 const toast = useToaster();
 const themeStore = useThemeStore();
 
-const range = ref<RangeDays>(90);
+const range = ref<ChartRange>(90);
 const location = ref<LocationFilter>("all");
 
 const summary = ref<StatsSummary | null>(null);
@@ -47,14 +57,17 @@ const summaryError = ref<ApiClientError | null>(null);
 const daily = ref<StatsDailyResponse | null>(null);
 const dailyError = ref<ApiClientError | null>(null);
 const loaded = ref(false);
+const hourly = ref<StatsHourlyResponse | null>(null);
+const hourlyError = ref<ApiClientError | null>(null);
 const loading = ref(false);
 const rolling = ref(false);
 /** Every known location, kept across filter changes for the picker. */
 const knownLocations = ref<StatsLocationRef[]>([]);
 
 let controller: AbortController | null = null;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-const rangeOptions = RANGE_DAYS.map((days) => ({ label: `${String(days)} days`, value: days }));
+const rangeOptions = [...RANGE_OPTIONS];
 const locationOptions = computed(() => [
   { label: "All locations", value: "all" as LocationFilter },
   ...knownLocations.value.map((entry) => ({
@@ -63,6 +76,7 @@ const locationOptions = computed(() => [
   })),
 ]);
 
+const isHourly = computed(() => range.value === RANGE_HOURLY);
 const theme = computed(() => chartTheme(themeStore.dark));
 const measure = computed(() => measureLocation(location.value));
 const allLocations = computed(() => location.value === "all");
@@ -102,6 +116,58 @@ const charts = computed(() => {
   };
 });
 
+const hourlyCharts = computed(() => {
+  const response = hourly.value;
+  if (response === null) return null;
+  const t = theme.value;
+  return {
+    downloads: hourlyBarChart(
+      response,
+      { label: "Downloads", yTitle: "Downloads", pick: (point) => point.downloads },
+      t,
+    ),
+    bytes: hourlyBarChart(
+      response,
+      {
+        label: "Downloaded size",
+        yTitle: "Size",
+        format: "bytes",
+        pick: (point) => point.download_bytes,
+      },
+      t,
+    ),
+    jobs: hourlyJobsChart(response, t),
+    added: hourlyBarChart(
+      response,
+      { label: "Videos added", yTitle: "Videos", pick: (point) => point.videos_added },
+      t,
+    ),
+    gone: hourlyBarChart(
+      response,
+      { label: "Videos gone", yTitle: "Videos", pick: (point) => point.videos_gone },
+      t,
+    ),
+    scrape: hourlyBarChart(
+      response,
+      { label: "Scrape requests", yTitle: "Requests", pick: (point) => point.scrape_requests },
+      t,
+    ),
+  };
+});
+
+/** The live figures with no hourly history, said in words instead of charted. */
+const hourlyNote = computed(() => {
+  const response = hourly.value;
+  if (response === null) return "";
+  const where = allLocations.value ? "across every location" : `on ${locationLabel.value}`;
+  const storage = `Storage has no hourly history: ${formatBytes(response.bytes_used)} is on disk ${where} now.`;
+  if (!allLocations.value) return storage;
+  const units = formatNumber(response.api_units_today);
+  return `${storage} API units are only counted per UTC day: ${units} spent so far today.`;
+});
+
+const activeError = computed(() => (isHourly.value ? hourlyError.value : dailyError.value));
+
 async function loadSummary(): Promise<void> {
   try {
     summary.value = await getStatsSummary(api);
@@ -117,7 +183,7 @@ async function loadDaily(): Promise<void> {
   controller = own;
   loading.value = true;
   try {
-    const window = rangeWindow(range.value);
+    const window = rangeWindow(range.value === RANGE_HOURLY ? 1 : range.value);
     const response = await getDailyStats(api, { ...window, location: location.value }, own.signal);
     if (own.signal.aborted) return;
     knownLocations.value = response.locations;
@@ -134,8 +200,34 @@ async function loadDaily(): Promise<void> {
   }
 }
 
+async function loadHourly(): Promise<void> {
+  controller?.abort();
+  const own = new AbortController();
+  controller = own;
+  loading.value = true;
+  try {
+    const response = await getHourlyStats(api, { location: location.value }, own.signal);
+    if (own.signal.aborted) return;
+    knownLocations.value = response.locations;
+    hourly.value = response;
+    hourlyError.value = null;
+  } catch (cause) {
+    if (own.signal.aborted) return;
+    hourlyError.value = normalizeError(cause);
+  } finally {
+    if (controller === own) {
+      loading.value = false;
+    }
+  }
+}
+
+/** Fetch the points for the range on screen. */
+function loadPoints(): Promise<void> {
+  return isHourly.value ? loadHourly() : loadDaily();
+}
+
 async function load(): Promise<void> {
-  await Promise.all([loadSummary(), loadDaily()]);
+  await Promise.all([loadSummary(), loadPoints()]);
 }
 
 async function rollupNow(): Promise<void> {
@@ -151,8 +243,35 @@ async function rollupNow(): Promise<void> {
   }
 }
 
+function stopRefresh(): void {
+  if (refreshTimer !== null) clearInterval(refreshTimer);
+  refreshTimer = null;
+}
+
+function startRefresh(): void {
+  stopRefresh();
+  refreshTimer = setInterval(() => {
+    void loadHourly();
+  }, HOURLY_REFRESH_MS);
+}
+
+/**
+ * The range picker never emits for the option already chosen, so a click on
+ * it is caught here (capture phase, before the picker handles it) and read as
+ * "refresh this range".
+ */
+function onRangeClick(event: MouseEvent): void {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("button")?.getAttribute("aria-pressed") === "true") void loadPoints();
+}
+
 watch([range, location], () => {
-  void loadDaily();
+  void loadPoints();
+});
+
+watch(isHourly, (hourlyView) => {
+  if (hourlyView) startRefresh();
+  else stopRefresh();
 });
 
 onMounted(() => {
@@ -160,6 +279,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  stopRefresh();
   controller?.abort();
 });
 </script>
@@ -169,7 +289,17 @@ onBeforeUnmount(() => {
     <PageHeader title="Charts" description="Storage, downloads and catalog growth over time.">
       <template #actions>
         <Button
-          v-if="charts !== null"
+          v-if="isHourly"
+          label="Refresh"
+          size="small"
+          severity="secondary"
+          :loading="loading"
+          :disabled="loading"
+          data-action="refresh"
+          @click="loadHourly"
+        />
+        <Button
+          v-else-if="charts !== null"
           label="Run rollup now"
           size="small"
           severity="secondary"
@@ -187,15 +317,17 @@ onBeforeUnmount(() => {
     </p>
 
     <div class="charts-filters" data-filters>
-      <SelectButton
-        v-model="range"
-        :options="rangeOptions"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        aria-label="Date range"
-        data-filter="range"
-      />
+      <div class="charts-range" @click.capture="onRangeClick">
+        <SelectButton
+          v-model="range"
+          :options="rangeOptions"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          aria-label="Date range"
+          data-filter="range"
+        />
+      </div>
       <Select
         v-model="location"
         :options="locationOptions"
@@ -207,9 +339,61 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <ErrorState :error="dailyError" title="Could not load the chart data" @retry="loadDaily" />
+    <ErrorState :error="activeError" title="Could not load the chart data" @retry="loadPoints" />
 
-    <template v-if="dailyError === null">
+    <template v-if="isHourly && hourlyError === null">
+      <ListSkeleton v-if="hourlyCharts === null" :rows="4" label="Loading the chart data" />
+      <template v-else>
+        <div class="charts-grid" :aria-busy="loading" data-view="hourly">
+          <ChartCard
+            chart-id="hourly-downloads"
+            title="Downloads per hour"
+            description="Video and audio files downloaded each hour, superseded versions included."
+            :config="hourlyCharts.downloads"
+          />
+          <ChartCard
+            chart-id="hourly-bytes"
+            title="Downloaded size per hour"
+            description="On-disk size of the files downloaded each hour, after any transcode."
+            :config="hourlyCharts.bytes"
+          />
+          <template v-if="allLocations">
+            <ChartCard
+              chart-id="hourly-jobs"
+              title="Jobs finished per hour"
+              description="Jobs that finished done or failed each hour. Cancelled jobs are left out."
+              :config="hourlyCharts.jobs"
+            />
+            <ChartCard
+              chart-id="hourly-added"
+              title="Videos added per hour"
+              description="Videos cellar first saw each hour, downloaded or not."
+              :config="hourlyCharts.added"
+            />
+            <ChartCard
+              chart-id="hourly-gone"
+              title="Videos gone per hour"
+              description="Videos still gone that went private or were removed each hour."
+              :config="hourlyCharts.gone"
+            />
+            <ChartCard
+              chart-id="hourly-scrape"
+              title="Scrape requests per hour"
+              description="yt-dlp requests to YouTube each hour, every account."
+              :config="hourlyCharts.scrape"
+            />
+          </template>
+        </div>
+        <p class="cellar-note charts-note" data-hourly-note>{{ hourlyNote }}</p>
+        <p v-if="!allLocations" class="cellar-note charts-note" data-location-note>
+          Jobs, videos added, gone videos and scrape requests are counted across all locations.
+          Choose All locations to chart them.
+        </p>
+        <HourlyTable :points="hourly?.points ?? []" :all-locations="allLocations" />
+      </template>
+    </template>
+
+    <template v-if="!isHourly && dailyError === null">
       <ListSkeleton v-if="!loaded" :rows="4" label="Loading the chart data" />
       <EmptyState
         v-else-if="charts === null"
@@ -282,6 +466,11 @@ onBeforeUnmount(() => {
   gap: 0.75rem;
   flex-wrap: wrap;
   margin-bottom: 1rem;
+}
+
+/* A click-capture wrapper only; the picker lays out as a direct flex item. */
+.charts-range {
+  display: contents;
 }
 
 .charts-grid {

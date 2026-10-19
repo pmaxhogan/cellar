@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia, type Pinia } from "pinia";
 import Select from "primevue/select";
@@ -6,12 +6,13 @@ import type { StatsDailyResponse } from "@cellar/shared";
 import ChartsPage from "../../src/pages/ChartsPage.vue";
 import ChartCard from "../../src/components/charts/ChartCard.vue";
 import type { ChartConfig } from "../../src/components/charts/series.ts";
-import { rangeWindow } from "../../src/api/stats.ts";
+import { HOURLY_REFRESH_MS, rangeWindow } from "../../src/api/stats.ts";
+import { HOUR_AXIS_TITLE, hourLabel } from "../../src/components/charts/hourlySeries.ts";
 import { useThemeStore } from "../../src/stores/theme.ts";
 import { flush } from "../helpers/dom.ts";
 import { apiError, fakeServer, json, type FakeServer } from "../helpers/fakeServer.ts";
 import { mountGlobals } from "../helpers/mount.ts";
-import { ChartStub, makeDaily, makeSummary } from "./fixtures.ts";
+import { ChartStub, makeDaily, makeHourly, makeSummary } from "./fixtures.ts";
 
 let pinia: Pinia;
 
@@ -26,6 +27,7 @@ function server(daily: StatsDailyResponse | ((query: URLSearchParams) => StatsDa
     .on("GET", "/api/stats/daily", (request) =>
       json(typeof daily === "function" ? daily(request.query) : daily),
     )
+    .on("GET", "/api/stats/hourly", () => json(makeHourly()))
     .on("POST", "/api/stats/rollup", () =>
       json({ points: 16, from: "2026-10-11", to: "2026-10-18" }),
     );
@@ -260,5 +262,178 @@ describe("Charts page empty and error states", () => {
     await flush();
     expect(wrapper.find(".error-state").exists()).toBe(false);
     expect(chartIds(wrapper)).toHaveLength(5);
+  });
+});
+
+function rangeButton(wrapper: VueWrapper, label: string) {
+  const button = wrapper
+    .findAll("[data-filter='range'] button")
+    .find((candidate) => candidate.text() === label);
+  if (button === undefined) throw new Error(`no range ${label}`);
+  return button;
+}
+
+async function showHourly(wrapper: VueWrapper): Promise<void> {
+  await rangeButton(wrapper, "24 hours").trigger("click");
+  await flush();
+}
+
+const HOURLY_IDS = [
+  "hourly-downloads",
+  "hourly-bytes",
+  "hourly-jobs",
+  "hourly-added",
+  "hourly-gone",
+  "hourly-scrape",
+];
+
+describe("Charts page 24 hours view", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("offers 24 hours as the first range, beside the day ranges", async () => {
+    const wrapper = await mountPage(server(makeDaily()));
+    expect(wrapper.findAll("[data-filter='range'] button").map((button) => button.text())).toEqual([
+      "24 hours",
+      "30 days",
+      "90 days",
+      "365 days",
+    ]);
+  });
+
+  it("swaps to live hourly charts labelled by local hour", async () => {
+    const fake = server(makeDaily());
+    const wrapper = await mountPage(fake);
+    await showHourly(wrapper);
+
+    const calls = fake.callsTo("GET", "/api/stats/hourly");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.query.get("hours")).toBe("24");
+    expect(calls[0]!.query.has("location_id")).toBe(false);
+
+    expect(chartIds(wrapper)).toEqual(HOURLY_IDS);
+    for (const title of wrapper.findAll("[data-chart] h2").map((heading) => heading.text())) {
+      expect(title).toContain("per hour");
+    }
+    const downloads = chart(wrapper, "hourly-downloads");
+    expect(downloads.data.labels?.[0]).toBe(hourLabel(makeHourly().from));
+    expect(downloads.data.datasets[0]?.data).toHaveLength(24);
+    expect(downloads.data.datasets[0]?.data[0]).toBe(2);
+    expect((downloads.options.scales as { x: { title: { text: string } } }).x.title.text).toBe(
+      HOUR_AXIS_TITLE,
+    );
+    expect(chart(wrapper, "hourly-jobs").data.datasets.map((dataset) => dataset.label)).toEqual([
+      "Done",
+      "Failed",
+    ]);
+
+    // No rollup for a live view: a refresh button takes its place.
+    expect(wrapper.find("[data-action='rollup']").exists()).toBe(false);
+    expect(wrapper.find(".page-header [data-action='refresh']").exists()).toBe(true);
+    expect(wrapper.find("[data-hourly-note]").text()).toBe(
+      "Storage has no hourly history: 3.00 GB is on disk across every location now. " +
+        "API units are only counted per UTC day: 8,500 spent so far today.",
+    );
+    expect(wrapper.find("details.points-table summary").text()).toBe(
+      "Show the data as a table (24 hours)",
+    );
+  });
+
+  it("goes back to the daily charts", async () => {
+    const fake = server(makeDaily());
+    const wrapper = await mountPage(fake);
+    await showHourly(wrapper);
+    await rangeButton(wrapper, "30 days").trigger("click");
+    await flush();
+    expect(chartIds(wrapper)).toEqual(["storage", "downloads", "catalog", "gone", "api"]);
+    expect(fake.callsTo("GET", "/api/stats/daily").at(-1)!.query.get("from")).toBe(
+      rangeWindow(30).from,
+    );
+    expect(wrapper.find(".page-header [data-action='rollup']").exists()).toBe(true);
+    expect(wrapper.find("[data-action='refresh']").exists()).toBe(false);
+  });
+
+  it("refetches when 24 hours is chosen again or refresh is pressed", async () => {
+    const fake = server(makeDaily());
+    const wrapper = await mountPage(fake);
+    await showHourly(wrapper);
+    await showHourly(wrapper);
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(2);
+    await wrapper.find("[data-action='refresh']").trigger("click");
+    await flush();
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(3);
+    // Re-choosing a day range refetches it too.
+    await rangeButton(wrapper, "90 days").trigger("click");
+    await flush();
+    const daily = fake.callsTo("GET", "/api/stats/daily").length;
+    await rangeButton(wrapper, "90 days").trigger("click");
+    await flush();
+    expect(fake.callsTo("GET", "/api/stats/daily")).toHaveLength(daily + 1);
+  });
+
+  it("refreshes itself while open and stops when left or unmounted", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const fake = server(makeDaily());
+    const wrapper = await mountPage(fake);
+    vi.advanceTimersByTime(HOURLY_REFRESH_MS);
+    await flush();
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(0);
+
+    await showHourly(wrapper);
+    vi.advanceTimersByTime(HOURLY_REFRESH_MS);
+    await flush();
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(2);
+
+    await rangeButton(wrapper, "30 days").trigger("click");
+    await flush();
+    vi.advanceTimersByTime(HOURLY_REFRESH_MS * 2);
+    await flush();
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(2);
+
+    await showHourly(wrapper);
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(3);
+    wrapper.unmount();
+    vi.advanceTimersByTime(HOURLY_REFRESH_MS * 2);
+    await flush();
+    expect(fake.callsTo("GET", "/api/stats/hourly")).toHaveLength(3);
+  });
+
+  it("filters the download charts by location and drops the catalog-wide ones", async () => {
+    const fake = server(makeDaily()).on("GET", "/api/stats/hourly", (request) =>
+      json(
+        makeHourly({
+          location_id: Number(request.query.get("location_id") ?? 0),
+          bytes_used: 1024,
+        }),
+      ),
+    );
+    const wrapper = await mountPage(fake);
+    await showHourly(wrapper);
+    wrapper.findComponent(Select).vm.$emit("update:modelValue", 2);
+    await flush();
+
+    expect(fake.callsTo("GET", "/api/stats/hourly").at(-1)!.query.get("location_id")).toBe("2");
+    expect(chartIds(wrapper)).toEqual(["hourly-downloads", "hourly-bytes"]);
+    expect(wrapper.find("[data-hourly-note]").text()).toBe(
+      "Storage has no hourly history: 1.00 KB is on disk on second now.",
+    );
+    expect(wrapper.find("[data-location-note]").text()).toContain("scrape requests");
+  });
+
+  it("shows an error state with a retry when the hourly points fail", async () => {
+    let fail = true;
+    const fake = server(makeDaily()).on("GET", "/api/stats/hourly", () =>
+      fail ? apiError(500, "internal error", "internal") : json(makeHourly()),
+    );
+    const wrapper = await mountPage(fake);
+    await showHourly(wrapper);
+    expect(wrapper.find(".error-state h2").text()).toBe("Could not load the chart data");
+    expect(wrapper.find("[data-chart]").exists()).toBe(false);
+    fail = false;
+    await wrapper.find(".error-state button").trigger("click");
+    await flush();
+    expect(wrapper.find(".error-state").exists()).toBe(false);
+    expect(chartIds(wrapper)).toEqual(HOURLY_IDS);
   });
 });
