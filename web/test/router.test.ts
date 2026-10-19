@@ -3,6 +3,7 @@ import { NAV_LINKS, routes } from "../src/router/index.ts";
 
 const ICONS_WITH_PATHS = [
   "videos",
+  "titles",
   "inspect",
   "rules",
   "accounts",
@@ -35,6 +36,7 @@ describe("router config", () => {
   it("lists the admin pages in the spec's nav order", () => {
     expect(NAV_LINKS.map((link) => link.label)).toEqual([
       "Videos",
+      "Title changes",
       "Inspect",
       "Rules",
       "Accounts",

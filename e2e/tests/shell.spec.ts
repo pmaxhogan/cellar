@@ -8,6 +8,7 @@ import { expect, test } from "./helpers.ts";
 /** Sidebar order, as web/src/router/index.ts NAV_LINKS declares it. */
 const NAV: { label: string; path: string; heading: string }[] = [
   { label: "Videos", path: "/", heading: "Videos" },
+  { label: "Title changes", path: "/title-changes", heading: "Title changes" },
   { label: "Inspect", path: "/inspect", heading: "Inspect" },
   { label: "Rules", path: "/rules", heading: "Rules" },
   { label: "Accounts", path: "/accounts", heading: "Accounts" },

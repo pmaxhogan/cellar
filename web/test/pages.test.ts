@@ -49,6 +49,7 @@ const IMPLEMENTED = new Set([
   "/settings",
   "/shares",
   "/takeout",
+  "/title-changes",
 ]);
 
 describe("page stubs", () => {

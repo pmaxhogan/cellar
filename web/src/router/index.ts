@@ -19,6 +19,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: "Video" },
   },
   {
+    path: "/title-changes",
+    name: "title-changes",
+    component: () => import("../pages/TitleChangesPage.vue"),
+    meta: { title: "Title changes" },
+  },
+  {
     path: "/inspect",
     name: "inspect",
     component: () => import("../pages/InspectPage.vue"),
@@ -115,6 +121,7 @@ export interface NavLink {
 /** Sidebar navigation, in display order. */
 export const NAV_LINKS: NavLink[] = [
   { to: "/", label: "Videos", icon: "videos" },
+  { to: "/title-changes", label: "Title changes", icon: "titles" },
   { to: "/inspect", label: "Inspect", icon: "inspect" },
   { to: "/rules", label: "Rules", icon: "rules" },
   { to: "/accounts", label: "Accounts", icon: "accounts" },

@@ -2156,6 +2156,7 @@ compose file adds `TMPDIR=/run/ytdlp` (see "Deployment").
 | Page | Contents |
 | --- | --- |
 | Videos | server-side datatable, FTS search (also matches a pasted channel id), filters (source, account, channel by title or id, status, location, date range), bulk select, trash icon, bulk download |
+| Title changes | every title change across the catalog (`GET /api/title-changes`), newest first: old title -> new title linking to the video, current title when it moved on again, channel, relative date (exact on hover); paged, title search, channel filter |
 | Video detail | player (`<video>` with `<track>` captions and a speed menu), metadata, history timeline, stats chart, media files, share links, per-video overrides |
 | Inspect | paste any identifier -> normalised id -> matched rules in priority order -> effective settings with per-key provenance -> edit per-video overrides |
 | Rules | reorderable list (drag and drop) + builder + live preview; the editor is a full-screen Drawer, opened from the list or directly at `/rules?edit=<id>` (the Inspect page links matched rules that way) |

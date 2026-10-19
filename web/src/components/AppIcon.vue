@@ -12,6 +12,7 @@ import { computed } from "vue";
 const PATHS: Record<string, string> = {
   videos: "M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4",
   inspect: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14M21 21l-6-6M10 7v6M7 10h6",
+  titles: "M4 6h10M4 11h7M4 18h16M14 14l3-3-3-3M11 11h6",
   rules: "M3 4h18l-7 8.5V19l-4 2v-8.5z",
   accounts:
     "M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M19 8v6M22 11h-6",
