@@ -161,7 +161,8 @@ db/db.ts                 # node:sqlite wrapper: get/all/run/exec/tx with savepoi
 db/migrate.ts            # migration runner (names recorded in a `migrations` table)
 db/migrations.ts         # ordered append-only array of { name, sql }; 001_init is inline,
                          #   002 is db/migrations002.ts, 003 is db/migrations003.ts,
-                         #   004 (title changes index) is db/migrations004.ts
+                         #   004 (title changes index) is db/migrations004.ts,
+                         #   005 (hourly stats indexes) is db/migrations005.ts
 db/kv.ts, db/paged.ts    # kv get/set (JSON values); paged-query helper + Where builder
 security/cfAccess.ts     # CF Access JWT plugin (amber verbatim, adapted)
 security/secrets.ts      # AES-256-GCM encrypt/decrypt (CELLAR_SECRET_KEY)
@@ -232,6 +233,9 @@ migration inserts rules. Present migrations:
   `video_changes`, `video_stats`, `thumbnails`, `media`, `rules`, `video_effective`,
   `rule_notify_counts`, `quota_usage`, `stats_daily`, `share_links`, and the `videos_fts`
   table with its triggers.
+- `005_hourly_stats_indexes`: indexes on the timestamps the live hourly charts range over:
+  `media (downloaded_at)`, `jobs (finished_at)`, `videos (created_at)`, `videos
+  (gone_since) WHERE gone_since IS NOT NULL`, `quota_usage (day)`.
 
 All times are epoch milliseconds (INTEGER). Every table carries `created_at` and
 `updated_at` unless a bullet shows its columns without them (those are append-only logs
@@ -371,8 +375,9 @@ JSON, validated by a shared zod schema on write.
   rows in the same table, keyed `YYYY-MM-DDTHH`.
 - `stats_daily`: `day`, `location_id` (NOT NULL; 0 = all locations), `bytes_used`,
   `downloads`, `catalog`, `gone`, `api_units`; PK `(day, location_id)`. The
-  pre-aggregated source of the charts, written by the `stats_rollup` job (see "Jobs and
-  scheduler").
+  pre-aggregated source of the day-range charts, written by the `stats_rollup` job (see
+  "Jobs and scheduler"). The "24 hours" chart view does not read it: it counts hourly
+  buckets live from `media`, `jobs`, `videos` and the hourly `quota_usage` rows.
 - `checks`: `id`, `run_at`, `trigger`, `results_json`, `ok`. Self-check history.
 - `settings`: `key`, `value_json`, `updated_at`. The sparse global settings store (amber
   pattern): only keys the owner changed are stored.
@@ -1375,6 +1380,19 @@ daily run (when it lands within 6 hours after midnight) finalises yesterday's fi
 the live storage figure, today's row always takes the live one, and a backfill keeps an
 existing snapshot and only reconstructs a missing one from the files still on disk.
 
+The Charts page's "24 hours" view has no rollup: `GET /api/stats/hourly` counts whole UTC
+hours live on each request (one indexed `GROUP BY (ts / 3600000)` per series, migration
+005), the window ending with the current, partial hour and empty hours zero-filled.
+Series: downloads and their bytes (`media.downloaded_at`, video and audio, any version, so
+a file superseded later still counts in the hour it was fetched; location filtered), jobs
+finished done and failed (`jobs.finished_at`; cancelled jobs are left out and a retry
+clears the finish time of the failure it replaces), videos added (`videos.created_at`),
+videos gone (`videos.gone_since`, so a video that came back drops out) and yt-dlp scrape
+requests (the `YYYY-MM-DDTHH` `quota_usage` rows, every account). Only the download series
+have a location. Deliberately not hourly: storage (no snapshots, and the reaper deletes
+the rows it frees, so the response carries the live figure only) and API units
+(`quota_usage` keeps them per UTC day, so the response carries today's total).
+
 Job types on main, with class, attempts and payload (the job row also carries `video_id`
 and `account_id` where it has one):
 
@@ -1861,6 +1879,7 @@ Details never carry credentials (proxies are named by label only). Checks:
 | GET | `/api/checks/latest` | admin | the newest self-check run, `{ row }` (null before the first run) |
 | POST | `/api/checks/run` | admin | run the self-check now; answers the new check row |
 | GET | `/api/stats/daily` | admin | pre-aggregated daily chart points: `from`, `to` (`YYYY-MM-DD` UTC, default the last 90 days, at most 400), `location_id` (default 0 = all locations; `all` = every row); answers `{ from, to, points, locations }` |
+| GET | `/api/stats/hourly` | admin | live hourly chart points: `hours` (default 24, 1 to 168), `location_id` (default 0 = all locations; filters the download series only); answers `{ hours, from, to, location_id, points, bytes_used, api_units_today, locations }` with exactly `hours` UTC-hour points (`from`/`to` and each point's `hour` are epoch ms) |
 | GET | `/api/stats/summary` | admin | live counts for the Charts tiles: videos, downloaded, gone, bytes per location against its quota, API units today against the budget, downloads in 7 and 30 days |
 | POST | `/api/stats/rollup` | admin | roll up today plus a 7-day backfill now; answers `{ points, from, to }` |
 | GET | `/api/tools` | admin | yt-dlp / ffmpeg versions and update state, `js_runtime`, `pot_provider_url`, `auto_update`, `ffmpeg_release_tag` |
@@ -2168,7 +2187,7 @@ compose file adds `TMPDIR=/run/ytdlp` (see "Deployment").
 | Activity | jobs + logs |
 | Notifications | inbox + push subscribe |
 | Self-check | status grid + history, run now |
-| Charts | PrimeVue Chart; storage used per location, downloads/day, catalog growth, gone count, API units used (server returns pre-aggregated daily points) |
+| Charts | PrimeVue Chart; range 24 hours / 30 / 90 / 365 days. Day ranges: storage used per location, downloads/day, catalog growth, gone count, API units used (server returns pre-aggregated daily points). 24 hours: downloads, bytes downloaded, jobs finished (done vs failed), videos added, videos gone and scrape requests per hour, labelled in local time, counted live (`/api/stats/hourly`) and refreshed every 5 minutes while open; storage and API units appear as single live figures because they have no hourly history |
 | Settings | global settings editor |
 | About | versions (cellar, yt-dlp, ffmpeg), tool update |
 

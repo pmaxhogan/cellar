@@ -1257,4 +1257,68 @@ export const StatsRollupResponseSchema = z.object({
   to: z.string(),
 });
 export type StatsRollupResponse = z.infer<typeof StatsRollupResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Live hourly points for the Charts page's "24 hours" view. stats_daily has no
+// hourly grain, so these are counted from the source tables on every request.
+//   GET /api/stats/hourly?hours=24&location_id=<n>
+//        -> StatsHourlyResponse (defaults: 24 hours, location 0 = all)
+// Buckets are whole UTC hours; the last one is the current, partial hour.
+// ---------------------------------------------------------------------------
+export const STATS_HOUR_MS = 3_600_000;
+export const STATS_DEFAULT_HOURS = 24;
+/** The widest hourly window one request may ask for (a week). */
+export const STATS_MAX_HOURS = 168;
+
+export const StatsHourlyQuerySchema = z.object({
+  hours: z.coerce.number().int().min(1).max(STATS_MAX_HOURS).default(STATS_DEFAULT_HOURS),
+  /** 0 = all locations. Only the download series have a location. */
+  location_id: z.coerce.number().int().nonnegative().default(ALL_LOCATIONS_ID),
+});
+export type StatsHourlyQuery = z.infer<typeof StatsHourlyQuerySchema>;
+export type StatsHourlyQueryInput = z.input<typeof StatsHourlyQuerySchema>;
+
+export const StatsHourlyPointSchema = z.object({
+  /** Epoch ms of the bucket start, on a UTC hour boundary. */
+  hour: z.number().int(),
+  /**
+   * Video and audio files downloaded in the hour (media.downloaded_at), any
+   * version: a superseded file still counts in the hour it was fetched. Rows
+   * the reaper or a replacing re-download deleted are gone and not counted.
+   * Filtered by location_id.
+   */
+  downloads: z.number().int().nonnegative(),
+  /** Current on-disk size of those files (after any transcode). Filtered by location_id. */
+  download_bytes: z.number().int().nonnegative(),
+  /** Jobs that finished done in the hour (jobs.finished_at). All locations. */
+  jobs_done: z.number().int().nonnegative(),
+  /** Jobs that finished failed in the hour; a retry clears its finish time. All locations. */
+  jobs_failed: z.number().int().nonnegative(),
+  /** Videos first catalogued in the hour (videos.created_at). All locations. */
+  videos_added: z.number().int().nonnegative(),
+  /** Videos still gone that went gone in the hour (videos.gone_since). All locations. */
+  videos_gone: z.number().int().nonnegative(),
+  /** yt-dlp scrape requests, every account (the hourly quota_usage rows). All locations. */
+  scrape_requests: z.number().int().nonnegative(),
+});
+export type StatsHourlyPoint = z.infer<typeof StatsHourlyPointSchema>;
+
+export const StatsHourlyResponseSchema = z.object({
+  hours: z.number().int().positive(),
+  /** Epoch ms: start of the first bucket and end (exclusive) of the last. */
+  from: z.number().int(),
+  to: z.number().int(),
+  location_id: z.number().int().nonnegative(),
+  /** Exactly `hours` points, oldest first, empty hours zero-filled. */
+  points: z.array(StatsHourlyPointSchema),
+  /**
+   * Bytes on disk now for location_id (0 = every location). There are no
+   * hourly storage snapshots, so this is a single live figure, not a series.
+   */
+  bytes_used: z.number().int().nonnegative(),
+  /** API units are only counted per UTC day; today's project-wide total so far. */
+  api_units_today: z.number().int().nonnegative(),
+  locations: z.array(StatsLocationRefSchema),
+});
+export type StatsHourlyResponse = z.infer<typeof StatsHourlyResponseSchema>;
 // --- end charts ---

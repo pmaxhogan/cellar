@@ -34,7 +34,7 @@ describe("GET /api/status", () => {
       version: "9.9.9-test",
       insecureMode: true,
       startedAt: 1234,
-      db: { ok: true, migrations: 4 },
+      db: { ok: true, migrations: 5 },
       tools: { ytdlp: null, ffmpeg: null },
     });
     expect(body.now).toBeGreaterThanOrEqual(before);

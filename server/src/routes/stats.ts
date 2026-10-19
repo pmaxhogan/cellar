@@ -1,6 +1,8 @@
 import {
   StatsDailyQuerySchema,
+  StatsHourlyQuerySchema,
   type StatsDailyResponse,
+  type StatsHourlyResponse,
   type StatsRollupResponse,
   type StatsSummary,
 } from "@cellar/shared";
@@ -13,6 +15,7 @@ import {
   rollupWithBackfill,
   statsLocations,
 } from "../domain/stats.ts";
+import { readHourly } from "../domain/statsHourly.ts";
 import { parseQuery } from "./validate.ts";
 
 /** Days before today that POST /stats/rollup recomputes along with today. */
@@ -27,6 +30,7 @@ export interface StatsRoutesOptions {
  * /api/stats, registered under the /api prefix by app.ts.
  *
  *   GET  /stats/daily?from&to&location_id -> StatsDailyResponse
+ *   GET  /stats/hourly?hours&location_id  -> StatsHourlyResponse (live, per UTC hour)
  *   GET  /stats/summary                   -> StatsSummary (live counts)
  *   POST /stats/rollup                    -> StatsRollupResponse
  */
@@ -46,6 +50,11 @@ export const statsRoutes: FastifyPluginAsync<StatsRoutesOptions> = async (app, o
       points: readDaily(db, { ...window, location_id: query.location_id }),
       locations: statsLocations(db),
     };
+  });
+
+  app.get("/stats/hourly", (request): StatsHourlyResponse => {
+    const query = parseQuery(StatsHourlyQuerySchema, request);
+    return readHourly(db, { hours: query.hours, location_id: query.location_id, now: now() });
   });
 
   app.get("/stats/summary", (): StatsSummary =>

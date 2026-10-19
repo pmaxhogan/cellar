@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   StatsDailyResponseSchema,
+  StatsHourlyResponseSchema,
   StatsRollupResponseSchema,
   StatsSummarySchema,
 } from "@cellar/shared";
@@ -93,6 +94,72 @@ describe("GET /api/stats/daily", () => {
     expect(body.code).toBe("invalid");
     expect(body.error).toContain(message);
   });
+});
+
+describe("GET /api/stats/hourly", () => {
+  const HOUR = 3_600_000;
+
+  it("defaults to 24 zero-filled hours ending with the current one", async () => {
+    const before = Date.now();
+    const response = await get("/api/stats/hourly");
+    expect(response.statusCode).toBe(200);
+    const body = StatsHourlyResponseSchema.parse(response.json());
+    expect(body.hours).toBe(24);
+    expect(body.location_id).toBe(0);
+    expect(body.points).toHaveLength(24);
+    expect(body.to % HOUR).toBe(0);
+    expect(body.to).toBeGreaterThan(before);
+    expect(body.to - body.from).toBe(24 * HOUR);
+    expect(body.points[0]?.hour).toBe(body.from);
+    expect(body.locations).toEqual([{ id: 1, label: "media" }]);
+  });
+
+  it("counts downloads at one location and answers its live storage", async () => {
+    const second = seedLocation(temp.db, "second", "/media2");
+    seedVideo(temp.db, { id: vid("a") });
+    seedVideo(temp.db, { id: vid("b") });
+    const recent = Date.now() - 1000;
+    seedMedia(temp.db, {
+      video_id: vid("a"),
+      kind: "video",
+      rel_path: "a.mkv",
+      location_id: 1,
+      size_bytes: 10,
+      downloaded_at: recent,
+    });
+    seedMedia(temp.db, {
+      video_id: vid("b"),
+      kind: "video",
+      rel_path: "b.mkv",
+      location_id: second,
+      size_bytes: 20,
+      downloaded_at: recent,
+    });
+
+    const all = StatsHourlyResponseSchema.parse((await get("/api/stats/hourly?hours=2")).json());
+    // A second ago may sit in either bucket when the test straddles an hour.
+    const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+    expect(sum(all.points.map((point) => point.downloads))).toBe(2);
+    expect(all.bytes_used).toBe(30);
+
+    const one = StatsHourlyResponseSchema.parse(
+      (await get(`/api/stats/hourly?hours=2&location_id=${String(second)}`)).json(),
+    );
+    expect(one.location_id).toBe(second);
+    expect(sum(one.points.map((point) => point.download_bytes))).toBe(20);
+    expect(one.bytes_used).toBe(20);
+  });
+
+  it.each(["hours=0", "hours=169", "hours=1.5", "hours=day", "location_id=all", "location_id=-1"])(
+    "rejects %s",
+    async (query) => {
+      const response = await get(`/api/stats/hourly?${query}`);
+      expect(response.statusCode).toBe(400);
+      const body = response.json<{ error: string; code: string }>();
+      expect(body.code).toBe("invalid");
+      expect(body.error).toContain("query string");
+    },
+  );
 });
 
 describe("GET /api/stats/summary", () => {

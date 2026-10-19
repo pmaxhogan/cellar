@@ -107,6 +107,7 @@ describe("migrate", () => {
       "002_jobs_notifications",
       "003_catalog",
       "004_title_changes_index",
+      "005_hourly_stats_indexes",
     ]);
 
     const second = migrate(db, log);
