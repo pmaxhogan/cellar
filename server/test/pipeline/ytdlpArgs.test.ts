@@ -56,6 +56,7 @@ describe("buildDownloadArgs", () => {
       "--write-all-thumbnails",
       "--write-subs",
       "--write-auto-subs",
+      "--ignore-errors",
     ]) {
       expect(args).toContain(flag);
     }
@@ -115,9 +116,11 @@ describe("buildDownloadArgs", () => {
     expect(captions.args).toContain("--skip-download");
     expect(captions.args).not.toContain("-f");
     expect(captions.args).toContain("--write-subs");
+    expect(captions.args).not.toContain("--ignore-errors");
     const metadata = build({ effective: effective({ media_mode: "metadata_only" }) });
     expect(metadata.args).toContain("--skip-download");
     expect(metadata.args).not.toContain("--write-subs");
+    expect(metadata.args).not.toContain("--ignore-errors");
     expect(metadata.args).toContain("--write-info-json");
   });
 
@@ -316,6 +319,12 @@ describe("classifyFailure", () => {
       false,
       undefined,
     ],
+    [
+      "ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests",
+      "captions",
+      false,
+      undefined,
+    ],
     ["ERROR: something odd", "unknown", false, undefined],
   ])("%s -> %s", (stderr, kind, permanent, privacy) => {
     const failure = classifyFailure(stderr);
@@ -323,6 +332,16 @@ describe("classifyFailure", () => {
     expect(failure.permanent).toBe(permanent);
     expect(failure.privacy).toBe(privacy);
     expect(failure.message).toBe(stderr);
+  });
+
+  it("ignores a subtitle 429 warning when classifying another failure", () => {
+    const stderr = [
+      "WARNING: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests",
+      "ERROR: [youtube] x: Video unavailable",
+    ].join("\n");
+    expect(classifyFailure(stderr).kind).toBe("unavailable");
+    const odd = "WARNING: Unable to download video subtitles for 'en': HTTP Error 429\nERROR: boom";
+    expect(classifyFailure(odd).kind).toBe("unknown");
   });
 
   it("falls back to the last line and masks credentials", () => {

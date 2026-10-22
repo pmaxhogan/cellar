@@ -160,7 +160,10 @@ export function buildDownloadArgs(input: DownloadArgsInput): DownloadArgs {
   if (format === null) {
     args.push("--skip-download");
   } else {
-    args.push("-f", format);
+    // Downgrades a failed subtitle fetch to a warning so the video still
+    // lands; any real failure still exits non-zero. captions_only keeps
+    // subtitle errors fatal, since there they are the whole job.
+    args.push("--ignore-errors", "-f", format);
     const sort = formatSort(effective);
     if (sort !== null) {
       args.push("-S", sort);
@@ -375,7 +378,7 @@ export function redactArgv(argv: readonly string[]): string[] {
 }
 
 export type YtdlpFailureKind =
-  "bot_wall" | "unavailable" | "rate_limited" | "auth" | "network" | "unknown";
+  "bot_wall" | "unavailable" | "rate_limited" | "auth" | "network" | "captions" | "unknown";
 
 export interface YtdlpFailure {
   kind: YtdlpFailureKind;
@@ -415,9 +418,20 @@ const RULES: readonly {
   },
 ];
 
+/**
+ * A subtitle fetch failure. timedtext answers 429 far more readily than the
+ * video endpoints and says nothing about the video itself, so these lines
+ * never feed the rules: a subtitle 429 must not pause every download.
+ */
+const SUBTITLE_FAILURE = /Unable to download (video |automatic )?subtitles/i;
+
 /** Classify a failed run from its stderr (and stdout, for builds that print errors there). */
 export function classifyFailure(stderr: string, stdout = ""): YtdlpFailure {
   const text = `${stderr}\n${stdout}`;
+  const ruleText = text
+    .split(/\r?\n/)
+    .filter((line) => !SUBTITLE_FAILURE.test(line))
+    .join("\n");
   const errorLine =
     text
       .split(/\r?\n/)
@@ -432,7 +446,7 @@ export function classifyFailure(stderr: string, stdout = ""): YtdlpFailure {
     "yt-dlp failed without output";
   const message = redactUrl(errorLine).slice(0, 500);
   for (const rule of RULES) {
-    if (rule.re.test(text)) {
+    if (rule.re.test(ruleText)) {
       return {
         kind: rule.kind,
         message,
@@ -440,6 +454,9 @@ export function classifyFailure(stderr: string, stdout = ""): YtdlpFailure {
         ...(rule.privacy === undefined ? {} : { privacy: rule.privacy }),
       };
     }
+  }
+  if (SUBTITLE_FAILURE.test(errorLine)) {
+    return { kind: "captions", message, permanent: false };
   }
   return { kind: "unknown", message, permanent: false };
 }

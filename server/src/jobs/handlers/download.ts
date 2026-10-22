@@ -65,7 +65,9 @@ import { TRANSCODE_JOB } from "./transcode.ts";
  * Failures are classified from stderr. A private/removed/unavailable video is
  * recorded in videos.privacy and the job ends without a retry (and without
  * counting toward the consecutive-failure alarm or the class breaker). A
- * rate limit (429) sets a cooldown that defers every download. Everything
+ * rate limit (429) sets a cooldown that defers every download; a 429 on a
+ * subtitle fetch does not count, and a success after a cooldown lifts resets
+ * its backoff. Everything
  * else is rethrown so the queue applies its backoff; the consecutive-failure
  * counter may trip a canary.
  */
@@ -803,6 +805,12 @@ async function finishDownload(
   });
 
   deps.recordDownloadSuccess();
+  // A download got through after a cooldown lifted, so the next 429 restarts
+  // the backoff at the base instead of doubling a pause that already ended.
+  const cooldown = getKv<{ until?: unknown }>(deps.db, COOLDOWN_KV_KEY);
+  if (typeof cooldown?.until === "number" && cooldown.until <= now) {
+    deps.db.run("DELETE FROM kv WHERE key = ?", COOLDOWN_KV_KEY);
+  }
   deps.logActivity({
     kind: "download.done",
     message:

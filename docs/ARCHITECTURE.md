@@ -995,6 +995,10 @@ The yt-dlp argv (`media/ytdlp.ts`, one flag per line of reasoning, URL last afte
 - `--write-subs [--write-auto-subs] --sub-langs <list> --sub-format vtt --convert-subs
   vtt` when captions are enabled (never for `metadata_only`); a language list of `all`
   becomes `all,-live_chat`.
+- `--ignore-errors` whenever media is downloaded, so a failed subtitle fetch (timedtext
+  answers 429 far more readily than the video endpoints) is a warning and the video
+  still lands; real failures still exit non-zero. `captions_only` and `metadata_only`
+  leave it out, so there a subtitle failure fails the job.
 - `--cookies <tmp>` and `--proxy <url>` when present; `--sleep-requests <s>` (one value
   drawn per run, uniformly, from the min..max settings or the rule's `ytdlp` overrides),
   `--limit-rate`, `--concurrent-fragments`; `--live-from-start` for `record_live`;
@@ -1032,9 +1036,12 @@ On failure the stderr is classified: `unavailable` (private, removed or unavaila
 PERMANENT: it sets `videos.privacy`, writes a `download.unavailable` error row and ends the
 job without a retry and without counting toward the failure alarm. A rate limit (HTTP 429)
 sets the cooldown (`kv.download.cooldown`: 30 minutes, doubled up to 4 hours while the
-previous cooldown ended less than 4 hours ago) that defers every download. A `network`
-failure through a proxy marks the proxy failed. Everything else (`bot_wall`, `auth`,
-`network`, `unknown`, a timeout) is rethrown, so the queue retries it with backoff up to 5
+previous cooldown ended less than 4 hours ago) that defers every download; a successful
+download after the cooldown ended deletes it, so the backoff starts over. Subtitle fetch
+lines ("Unable to download video subtitles") never feed the classification: a subtitle
+429 is not a rate limit, and a run whose ERROR line is a subtitle failure is `captions`.
+A `network` failure through a proxy marks the proxy failed. Everything else (`bot_wall`,
+`auth`, `network`, `captions`, `unknown`, a timeout) is rethrown, so the queue retries it with backoff up to 5
 attempts; each non-permanent failure also feeds the consecutive-failure counter, and when
 it reaches `notify.consecutive_download_failures` a `canary` job is queued.
 

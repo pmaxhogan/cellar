@@ -367,6 +367,26 @@ describe("download failures", () => {
     expect(getKv<{ ms: number }>(h.db, COOLDOWN_KV_KEY)?.ms).toBe(60 * 60_000);
   });
 
+  it("does not pause every download on a subtitle 429", async () => {
+    h.env.FAKE_YTDLP_FAIL = "1";
+    h.env.FAKE_YTDLP_FAIL_MESSAGE =
+      "Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests";
+    await expect(download().run).rejects.toThrow(/captions/);
+    expect(getKv(h.db, COOLDOWN_KV_KEY)).toBeUndefined();
+    expect(activityKinds(h.db)).not.toContain("download.rate_limited");
+  });
+
+  it("resets the cooldown backoff after a success once it lifts", async () => {
+    h.env.FAKE_YTDLP_FAIL = "1";
+    h.env.FAKE_YTDLP_FAIL_MESSAGE = "HTTP Error 429: Too Many Requests";
+    await expect(download().run).rejects.toThrow(/rate_limited/);
+    const first = getKv<{ until: number }>(h.db, COOLDOWN_KV_KEY);
+    h.clock.now = (first?.until ?? 0) + 1;
+    delete h.env.FAKE_YTDLP_FAIL;
+    await download().run;
+    expect(getKv(h.db, COOLDOWN_KV_KEY)).toBeUndefined();
+  });
+
   it("counts connection errors against the proxy and notifies at three", async () => {
     setEffective(h, VIDEO_ID, { effective: { proxy: "pool" } });
     h.proxyToUse = { id: 4, url: "http://user:pass@proxy.example:3128" };
