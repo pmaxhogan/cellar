@@ -210,13 +210,18 @@ test.describe("rules", () => {
 });
 
 test.describe("inspect", () => {
-  const URL_INPUT = "https://youtu.be/dQw4w9WgXcQ?t=5";
+  // Not in any fake yt-dlp feed (scripts/fake-bin/ytdlp-data.mjs): a history or
+  // Watch Later ingest elsewhere in the run must never put it in the catalog.
+  const UNSEEN_ID = "e2eUnseen01";
+  const URL_INPUT = `https://youtu.be/${UNSEEN_ID}?t=5`;
 
   test("a pasted URL is normalised to its video id", async ({ page }) => {
     await page.goto("/inspect");
     const input = page.getByLabel("Video URL or id");
     await input.fill(URL_INPUT);
-    await expect(page.getByTestId("inspect-parsed")).toHaveText(/Video id\s+dQw4w9WgXcQ/);
+    await expect(page.getByTestId("inspect-parsed")).toHaveText(
+      new RegExp(`Video id\\s+${UNSEEN_ID}`),
+    );
     await expect(page.getByTestId("inspect-submit")).toBeEnabled();
 
     await input.fill("https://example.com/not-a-video");
@@ -225,7 +230,7 @@ test.describe("inspect", () => {
   });
 
   test("an unknown video shows the effective settings it would get", async ({ page, api }) => {
-    test.skip(!(await api.has("/api/inspect?id=dQw4w9WgXcQ")), INSPECT_MISSING);
+    test.skip(!(await api.has(`/api/inspect?id=${UNSEEN_ID}`)), INSPECT_MISSING);
 
     await page.goto("/inspect");
     await page.getByLabel("Video URL or id").fill(URL_INPUT);
