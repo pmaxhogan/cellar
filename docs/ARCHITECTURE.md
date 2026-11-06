@@ -1786,7 +1786,8 @@ Details never carry credentials (proxies are named by label only). Checks:
   then a warning for a failed or `blocked` update check or an available newer build;
 - PO-token sidecar reachable;
 - YouTube favicon reachable;
-- per-account API token valid (cheap `channels.list mine=true`) and cookie jar valid;
+- per-account API token valid (cheap `channels.list mine=true`; when the daily API budget
+  is spent, a forced OAuth token refresh instead, which costs no quota) and cookie jar valid;
 - VAPID keys present;
 - clock skew versus the Google `Date` header;
 - proxy pool health;

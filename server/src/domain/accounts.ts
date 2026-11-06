@@ -5,8 +5,8 @@ import { join } from "node:path";
 import type { AccountRow } from "@cellar/shared";
 import type { Db } from "../db/db.ts";
 import { runTool, ToolRunError } from "../media/exec.ts";
-import { clearAccessToken, youtubeApi } from "../youtube/api.ts";
-import { recordScrape } from "../youtube/quota.ts";
+import { clearAccessToken, getAccessToken, youtubeApi } from "../youtube/api.ts";
+import { QuotaExhausted, recordScrape } from "../youtube/quota.ts";
 import {
   assertAccountExists,
   derivedStatus,
@@ -383,14 +383,31 @@ interface ChannelsMineResponse {
   items?: { id?: string }[];
 }
 
-/** The API health probe: a 1 unit `channels.list mine=true`. */
+/**
+ * The API health probe: a 1 unit `channels.list mine=true`. When the daily
+ * API budget is spent (ours or Google's), a forced token refresh stands in:
+ * it costs no YouTube quota and still proves the refresh token is good, so a
+ * busy day does not read as a broken credential.
+ */
 export async function checkAccountApi(deps: ServiceDeps, id: number): Promise<ProbeResult> {
   assertAccountExists(deps.db, id);
   try {
-    const body = await youtubeApi(deps, id).get<ChannelsMineResponse>("channels", {
-      part: "id",
-      mine: true,
-    });
+    let body: ChannelsMineResponse;
+    try {
+      body = await youtubeApi(deps, id).get<ChannelsMineResponse>("channels", {
+        part: "id",
+        mine: true,
+      });
+    } catch (error) {
+      if (!(error instanceof QuotaExhausted)) {
+        throw error;
+      }
+      await getAccessToken(deps, id, { force: true });
+      return {
+        ok: true,
+        detail: "Token refresh succeeded; the channels.list probe was skipped (API budget spent).",
+      };
+    }
     const channelId = body.items?.[0]?.id;
     return {
       ok: true,

@@ -28,7 +28,7 @@ import {
 } from "../src/domain/accounts.ts";
 import type { ServiceDeps } from "../src/domain/deps.ts";
 import { resetToolProbeCache } from "../src/media/exec.ts";
-import { scrapeUsage } from "../src/youtube/quota.ts";
+import { markApiBudgetSpent, scrapeUsage } from "../src/youtube/quota.ts";
 import type { TempApp } from "./helpers.ts";
 import {
   createWave1App,
@@ -497,6 +497,22 @@ describe("health probes", () => {
     expect(google.apiCalls()[0]?.url.searchParams.get("part")).toBe("id");
     google.api["channels"] = () => jsonResponse(200, { items: [] });
     expect((await checkAccountApi(deps(), id)).detail).toMatch(/no YouTube channel/);
+  });
+
+  it("checkAccountApi falls back to a token refresh when the API budget is spent", async () => {
+    const id = seedLinkedAccount(temp.db);
+    markApiBudgetSpent(deps());
+    expect(await checkAccountApi(deps(), id)).toEqual({
+      ok: true,
+      detail: "Token refresh succeeded; the channels.list probe was skipped (API budget spent).",
+    });
+    expect(google.apiCalls()).toHaveLength(0);
+
+    const dead = seedLinkedAccount(temp.db, { refreshToken: "dead" });
+    google.revokedRefreshTokens.add("dead");
+    const lost = await checkAccountApi(deps(), dead);
+    expect(lost.ok).toBe(false);
+    expect(lost.detail).toMatch(/revoked or has expired/);
   });
 
   it("checkAccountApi reports auth loss and other failures as not ok", async () => {
