@@ -1237,7 +1237,11 @@ Two budgets are tracked and enforced, both configurable:
   the project-wide row (`account_id` 0), which the budget is enforced against. Units are
   charged per call, before the call, by Google's table (`videos.list` with 50 ids = 1
   unit; `playlistItems.list`, `subscriptions.list` and `channels.list` are 1 unit per
-  call). A spent budget raises `quota_exhausted` (HTTP 429).
+  call). A spent budget raises `quota_exhausted` (HTTP 429). Google's own quota day ends
+  at midnight Pacific time, not UTC: a Google `403 quotaExceeded` (or
+  `dailyLimitExceeded`) refuses every API call until the next midnight
+  `America/Los_Angeles` (kv `google_quota_blocked_until`) and leaves the usage rows as
+  true counts.
 - A self-imposed per-account scrape budget (requests/hour: `accounts.
   scrape_budget_per_hour`, else `quota.scrape_requests_per_hour`, default 120), tracked
   in `quota_usage.scrape_requests` on hour rows (`day` = `YYYY-MM-DDTHH`). It is charged

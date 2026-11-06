@@ -218,12 +218,15 @@ describe("youtubeApi", () => {
     expect(google.apiCalls()).toHaveLength(2);
   });
 
-  it("treats Google's quotaExceeded as exhaustion for the rest of the day", async () => {
+  it("treats Google's quotaExceeded as exhaustion until Google's reset", async () => {
     const id = seedLinkedAccount(temp.db);
     google.api["videos"] = () => jsonResponse(403, fixture("error.quotaExceeded.json"));
     await expect(youtubeApi(deps(), id).get("videos", { id: "x" })).rejects.toThrow(QuotaExhausted);
     expect(apiUsage(deps()).remaining).toBe(0);
-    temp.db.run("DELETE FROM quota_usage");
+    await expect(youtubeApi(deps(), id).get("videos", { id: "x" })).rejects.toThrow(
+      /midnight Pacific/,
+    );
+    temp.db.run("DELETE FROM kv WHERE key = 'google_quota_blocked_until'");
     google.api["videos"] = () =>
       jsonResponse(403, { error: { code: 403, errors: [{ reason: "dailyLimitExceeded" }] } });
     await expect(youtubeApi(deps(), id).get("videos", { id: "x" })).rejects.toThrow(QuotaExhausted);

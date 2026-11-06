@@ -6,6 +6,7 @@ import {
   chargeApiUnits,
   consumeScrape,
   markApiBudgetSpent,
+  nextGoogleQuotaReset,
   PROJECT_ACCOUNT_ID,
   QuotaExhausted,
   recordScrape,
@@ -96,12 +97,32 @@ describe("API units", () => {
     expect(() => chargeApiUnits(deps(), PROJECT_ACCOUNT_ID, 1.5)).toThrow(/non-negative/);
   });
 
-  it("markApiBudgetSpent fills the project row up to the budget, once", () => {
+  it("markApiBudgetSpent blocks the API until midnight Pacific, not the end of the UTC day", () => {
+    // 06:30 UTC on 2026-10-26 is 23:30 PDT on the 25th: Google resets at 07:00 UTC.
+    now = Date.UTC(2026, 9, 26, 6, 30);
     chargeApiUnits(deps(), PROJECT_ACCOUNT_ID, 10);
     markApiBudgetSpent(deps());
-    expect(apiUsage(deps())).toMatchObject({ used: 10000, remaining: 0 });
-    markApiBudgetSpent(deps());
-    expect(apiUsage(deps()).used).toBe(10000);
+    expect(apiUsage(deps())).toMatchObject({ used: 10, remaining: 0 });
+    expect(() => chargeApiUnits(deps(), PROJECT_ACCOUNT_ID, 1)).toThrow(/midnight Pacific/);
+    now = Date.UTC(2026, 9, 26, 7, 0, 1);
+    expect(apiUsage(deps()).remaining).toBe(9990);
+    expect(chargeApiUnits(deps(), PROJECT_ACCOUNT_ID, 1).used).toBe(11);
+  });
+
+  it("finds the next Pacific midnight across daylight saving changes", () => {
+    // PDT (UTC-7).
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 9, 26, 6, 30))).toBe(Date.UTC(2026, 9, 26, 7));
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 9, 26, 7, 0, 0))).toBe(Date.UTC(2026, 9, 27, 7));
+    // PST (UTC-8) after 2026-11-01.
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 10, 5, 7, 55))).toBe(Date.UTC(2026, 10, 5, 8));
+    // The night of the fall-back change: midnight PDT, before the 02:00 change.
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 10, 1, 6, 0))).toBe(Date.UTC(2026, 10, 1, 7));
+    // Just after it: the next midnight is PST.
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 10, 1, 7, 30))).toBe(Date.UTC(2026, 10, 2, 8));
+    // The spring-forward day: 00:30 PST on 2026-03-08, next midnight is PDT.
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 2, 8, 8, 30))).toBe(Date.UTC(2026, 2, 9, 7));
+    // Late evening on the eve of spring-forward: midnight still PST.
+    expect(nextGoogleQuotaReset(Date.UTC(2026, 2, 8, 7, 0))).toBe(Date.UTC(2026, 2, 8, 8));
   });
 });
 

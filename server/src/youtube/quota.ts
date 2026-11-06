@@ -1,4 +1,5 @@
 import type { Db } from "../db/db.ts";
+import { getKv, setKv } from "../db/kv.ts";
 import { nowOf, type ServiceDeps } from "../domain/deps.ts";
 import { DomainError } from "../domain/errors.ts";
 import { getSettings } from "../domain/settings.ts";
@@ -10,6 +11,9 @@ import { getSettings } from "../domain/settings.ts";
  *   AND the project-wide row (account_id 0); the project row is what the
  *   daily budget (`quota.api_units_per_day`) is enforced against, because
  *   Google's quota is per Cloud project, not per user.
+ *   Google's own quota day ends at midnight Pacific time instead; when Google
+ *   says the quota is gone, every API call is refused until that midnight
+ *   (kv `google_quota_blocked_until`), not until the end of the UTC day.
  * - yt-dlp scrape requests per account per UTC hour. Hour rows share the
  *   table, keyed `YYYY-MM-DDTHH` in the `day` column so they never collide
  *   with the `YYYY-MM-DD` day rows.
@@ -60,12 +64,61 @@ export interface ApiUsage {
   remaining: number;
 }
 
-/** Project-wide API units spent today against the daily budget. */
+export const GOOGLE_QUOTA_BLOCK_KV = "google_quota_blocked_until";
+/** Google resets the YouTube Data API quota at midnight in this zone. */
+export const GOOGLE_QUOTA_TIME_ZONE = "America/Los_Angeles";
+
+const zoneParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: GOOGLE_QUOTA_TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** Wall clock minus UTC in ms for the quota zone at `at` (negative for Pacific). */
+function zoneOffsetMs(at: number): number {
+  const parts = zoneParts.formatToParts(new Date(at));
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const wall = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
+    part("second"),
+  );
+  return wall - (at - (((at % 1000) + 1000) % 1000));
+}
+
+/** The first midnight Pacific time after `now`: when Google's quota day starts over. */
+export function nextGoogleQuotaReset(now: number): number {
+  const offset = zoneOffsetMs(now);
+  const wall = new Date(now + offset);
+  const midnight = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + 1);
+  // A daylight saving change before that midnight moves the offset by an hour.
+  return midnight - zoneOffsetMs(midnight - offset);
+}
+
+function googleBlocked(deps: Pick<ServiceDeps, "db" | "now">): boolean {
+  const until = getKv<number>(deps.db, GOOGLE_QUOTA_BLOCK_KV);
+  return typeof until === "number" && until > nowOf(deps);
+}
+
+/**
+ * Project-wide API units spent today against the daily budget. `remaining`
+ * is 0 while Google has the quota blocked, whatever the local count says.
+ */
 export function apiUsage(deps: Pick<ServiceDeps, "db" | "now">): ApiUsage {
   const day = utcDayKey(nowOf(deps));
   const used = usageRow(deps.db, PROJECT_ACCOUNT_ID, day).api_units;
   const budget = getSettings(deps.db)["quota.api_units_per_day"];
-  return { day, used, budget, remaining: Math.max(0, budget - used) };
+  const remaining = googleBlocked(deps) ? 0 : Math.max(0, budget - used);
+  return { day, used, budget, remaining };
 }
 
 /** API units one account spent today. */
@@ -104,6 +157,13 @@ export function chargeApiUnits(
   }
   const { db } = deps;
   return db.tx(() => {
+    if (googleBlocked(deps)) {
+      throw new QuotaExhausted(
+        "api",
+        "Google reports the daily YouTube API quota is spent; it resets at midnight Pacific time.",
+        { until: getKv<number>(db, GOOGLE_QUOTA_BLOCK_KV) },
+      );
+    }
     const usage = apiUsage(deps);
     if (usage.used + units > usage.budget) {
       throw new QuotaExhausted("api", "The daily YouTube API budget is spent.", {
@@ -122,13 +182,12 @@ export function chargeApiUnits(
 
 /**
  * Google said the project quota is gone (403 quotaExceeded), whatever our own
- * count says. Mark today's project row as spent so nothing else tries.
+ * count says. Refuse every API call until Google's next reset at midnight
+ * Pacific time. The usage rows stay true counts of what was spent.
  */
 export function markApiBudgetSpent(deps: Pick<ServiceDeps, "db" | "now">): void {
-  const usage = apiUsage(deps);
-  if (usage.used < usage.budget) {
-    addUsage(deps.db, PROJECT_ACCOUNT_ID, usage.day, "api_units", usage.budget - usage.used);
-  }
+  const now = nowOf(deps);
+  setKv(deps.db, GOOGLE_QUOTA_BLOCK_KV, nextGoogleQuotaReset(now), now);
 }
 
 export interface ScrapeUsage {
