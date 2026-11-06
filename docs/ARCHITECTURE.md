@@ -528,7 +528,7 @@ replace the provisional ones this document first assigned.
 | `ingest.watch_later_minutes` | 30 | Watch Later feed per account |
 | `ingest.liked_minutes` | 30 | Liked playlist per account |
 | `ingest.subscriptions_hours` | 6 | Subscriptions list per account |
-| `ingest.channel_uploads_minutes` | 30 | Newest uploads per channel |
+| `ingest.channel_uploads_minutes` | 10 | Channel feed sweep interval (`ingest_channel_feeds`); API uploads polls only where needed |
 | `ingest.channel_newest_n` | 50 | Newest uploads read per channel poll (1-500) |
 | `ingest.manual_channel_full_scan_hours` | 24 | Full scan of manual channels until caught up (leftover budget) |
 | `recheck.daily_under_days` | 30 | Daily recheck below this video age |
@@ -806,7 +806,8 @@ column, which is what the scheduler's per-account scrape gate looks at):
 | `ingest_watch_later` | row | yt-dlp `:ytwatchlater` flat (one run, the whole list). An entry that left the list keeps its source row; only `last_seen_at` stops moving (rules may use `last_seen`), and the activity row reports how many are `notInList`. |
 | `ingest_liked` | `{ account_id }` | API `playlistItems.list playlistId=LL`, 50 per page, newest first, until a page is all known (at most 200 pages). `source_ts` = `snippet.publishedAt` (the like time). |
 | `ingest_subscriptions` | `{ account_id }` | API `subscriptions.list mine=true` (at most 100 pages) -> `channels` and `channel_sources(subscription)` with `subscribed_at`. A channel the API no longer returns keeps its row and is reported in an `ingest.subscriptions_missing` activity row. Newly found channels get an immediate `ingest_channel_uploads`. |
-| `ingest_channel_uploads` | `{ channel_id }` | API `playlistItems.list UU...` for every tracked channel (any `channel_sources` row). A polled channel stops at the first upload it already has as a `subscription` or `channel` source and reads at most `ingest.channel_newest_n`. A brand-new channel source (never polled) pages until a whole page is older than `installed_at` minus 7 days (at most 40 pages), still CREATING the metadata-only records of that page so the guard rule marks them pri 0; only uploads newer than the cutoff are queued for an immediate recheck, the rest wait for the leftover-budget due rechecks. |
+| `ingest_channel_feeds` | `{}` | The quota-free front of the uploads poll. Reads the public RSS feed (`https://www.youtube.com/feeds/videos.xml?channel_id=`, no cookies, no proxy, no API key, newest ~15 uploads) of every tracked channel, 4 at a time, and queues `ingest_channel_uploads` only for a channel that was never API-polled (`channels.last_checked_at` NULL), was last API-polled 24 h ago or more (safety net), lists an upload that is not yet a `subscription`/`channel` source and was not published more than 1 h before the last API poll, or whose feed failed (HTTP error, not a feed, empty, timeout) while the last API poll is 2 h old or more. A 429 pauses every feed read for 15 min (kv `channel_feeds_backoff_until`). Polls are held, not queued, while today's API budget is spent. One `ingest.channel_feeds` activity row per sweep that queued, failed or held something. |
+| `ingest_channel_uploads` | `{ channel_id }` | API `playlistItems.list UU...` for a tracked channel (any `channel_sources` row), queued by `ingest_channel_feeds`, by a subscriptions run that found the channel, or for every tracked channel by ingest now. `channels.last_checked_at` is the time of its last run. A polled channel stops at the first upload it already has as a `subscription` or `channel` source and reads at most `ingest.channel_newest_n`. A brand-new channel source (never polled) pages until a whole page is older than `installed_at` minus 7 days (at most 40 pages), still CREATING the metadata-only records of that page so the guard rule marks them pri 0; only uploads newer than the cutoff are queued for an immediate recheck, the rest wait for the leftover-budget due rechecks. |
 | `ingest_channel_backfill` (`leftover`) | `{ channel_id }` | The deep walk of a manual channel's whole uploads playlist, resuming from the page token kept in `kv` (`channel_backfill:<id>`), at most 400 pages a run, pausing as soon as the quota gate stops allowing the leftover class. Creates `channel` sources and metadata-only records; no immediate rechecks. |
 | `recheck_batch` | `{ video_ids }` (at most 50) or `{ due: true, limit }` | See "Metadata history and rechecks". The API account is NOT in the payload: each 50-id chunk picks one at run time. |
 | `recheck_batch_leftover` (`leftover`) | same payloads | The same handler for pri-0 videos. |
@@ -1407,6 +1408,7 @@ and `account_id` where it has one):
 | --- | --- | --- | --- |
 | `ingest_history`, `ingest_watch_later` | io | 2 | account on the row |
 | `ingest_liked`, `ingest_subscriptions` | io | 2 | `{ account_id }` |
+| `ingest_channel_feeds` | io | 1 | `{}` |
 | `ingest_channel_uploads` | io | 2 | `{ channel_id }` |
 | `ingest_channel_backfill` | leftover | 2 | `{ channel_id }` |
 | `recheck_batch` | io | 3 | `{ video_ids }` or `{ due, limit }` |

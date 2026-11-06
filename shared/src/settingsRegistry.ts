@@ -117,11 +117,13 @@ export const settingsRegistry = {
   }),
   "ingest.channel_uploads_minutes": defineSetting({
     schema: posInt,
-    default: 30,
+    default: 10,
     ui: {
       group: "Ingestion",
       label: "Channel uploads poll",
-      description: "How often subscribed and manual channels are checked for new uploads.",
+      description:
+        "How often subscribed and manual channels are checked for new uploads. " +
+        "Each check reads the free RSS feeds and spends API units only on channels with news.",
       control: "number",
       min: 1,
       unit: "minutes",

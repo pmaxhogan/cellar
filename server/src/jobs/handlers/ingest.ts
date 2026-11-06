@@ -1,4 +1,5 @@
 import type { RecheckDeps } from "../../domain/recheck.ts";
+import { INGEST_CHANNEL_FEEDS_JOB, sweepChannelFeeds } from "../../youtube/channelFeeds.ts";
 import {
   apiAccountIds,
   cookieAccountIds,
@@ -30,6 +31,7 @@ import type { JobClass, JobContext, JobRegistry } from "../types.ts";
  *   ingest_watch_later      jobs.account_id (or { account_id })   io
  *   ingest_liked            { account_id }                          io
  *   ingest_subscriptions    { account_id }                          io
+ *   ingest_channel_feeds    {}                                      io
  *   ingest_channel_uploads  { channel_id }                          io
  *   ingest_channel_backfill { channel_id }                          leftover
  *
@@ -196,6 +198,18 @@ export function registerIngestHandlers(registry: JobRegistry, deps: IngestHandle
       await runIngest(d, ctx, emptyResult("channel_uploads", null, channelId), (r, options) =>
         ingestChannelUploads(d, channelId, r, options),
       );
+    },
+  });
+  register(INGEST_CHANNEL_FEEDS_JOB, {
+    class: "io",
+    maxAttempts: 1,
+    handler: async (ctx) => {
+      const result = await sweepChannelFeeds(jobDeps(deps, ctx), {
+        checkpoint: () => {
+          ctx.checkpoint();
+        },
+      });
+      ctx.log.info({ ...result }, "channel feeds swept");
     },
   });
   register(INGEST_CHANNEL_BACKFILL_JOB, {

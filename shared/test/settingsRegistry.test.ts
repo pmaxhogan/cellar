@@ -19,7 +19,7 @@ const EXPECTED_DEFAULTS: Record<string, unknown> = {
   "ingest.watch_later_minutes": 30,
   "ingest.liked_minutes": 30,
   "ingest.subscriptions_hours": 6,
-  "ingest.channel_uploads_minutes": 30,
+  "ingest.channel_uploads_minutes": 10,
   "ingest.channel_newest_n": 50,
   "ingest.manual_channel_full_scan_hours": 24,
   "quota.api_units_per_day": 10000,

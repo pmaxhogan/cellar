@@ -821,7 +821,8 @@ function uploadsPlaylistOf(channel: ChannelRowLite): string {
   return channel.uploads_playlist_id ?? `UU${channel.id.slice(2)}`;
 }
 
-function isKnownUpload(db: Db, videoId: string): boolean {
+/** Whether the video is already recorded as an upload of a tracked channel. */
+export function isKnownUpload(db: Db, videoId: string): boolean {
   return (
     db.get(
       `SELECT 1 AS one FROM video_sources

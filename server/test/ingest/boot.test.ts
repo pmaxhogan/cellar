@@ -33,6 +33,7 @@ import {
   RECHECK_LEFTOVER_JOB,
   recordSighting,
 } from "../../src/youtube/ingest.ts";
+import { INGEST_CHANNEL_FEEDS_JOB } from "../../src/youtube/channelFeeds.ts";
 import { recordScrape } from "../../src/youtube/quota.ts";
 import { DAY, IngestEnv, log, NOW, RICK, THREE_B1B } from "./ingestHelpers.ts";
 
@@ -216,17 +217,20 @@ describe("feed ticks", () => {
     ]);
   });
 
-  it("queues uploads for every tracked channel and backfill for manual channels", () => {
+  it("queues the feed sweep on schedule, per-channel polls when forced, and backfill", () => {
     const deps = scheduleDeps();
     const account = env.account();
     track(THREE_B1B, "subscription", account);
     track(RICK, "manual", null);
     expect(trackedChannelIds(env.db)).toEqual([THREE_B1B, RICK]);
-    expect(tickChannelUploads(deps)).toBe(2);
+    expect(tickChannelUploads(deps)).toBe(1);
     expect(tickChannelUploads(deps)).toBe(0);
-    env.now += 30 * 60_000;
-    expect(tickChannelUploads(deps)).toBe(2);
-    // Deduped per channel while the first jobs are still queued.
+    env.now += 10 * 60_000;
+    expect(tickChannelUploads(deps)).toBe(1);
+    // Deduped while the first sweep is still queued.
+    expect(env.jobs(INGEST_CHANNEL_FEEDS_JOB)).toHaveLength(1);
+    expect(env.jobs(INGEST_CHANNEL_UPLOADS_JOB)).toHaveLength(0);
+    expect(tickChannelUploads(deps, true)).toBe(2);
     expect(env.jobs(INGEST_CHANNEL_UPLOADS_JOB)).toHaveLength(2);
 
     expect(tickChannelBackfill(deps)).toBe(1);

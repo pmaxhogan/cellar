@@ -22,6 +22,7 @@ import {
   RECHECK_BATCH_JOB,
   RECHECK_LEFTOVER_JOB,
 } from "../youtube/ingest.ts";
+import { INGEST_CHANNEL_FEEDS_JOB } from "../youtube/channelFeeds.ts";
 import { apiUsage, scrapeUsage } from "../youtube/quota.ts";
 import { createRydClient, type RydClient } from "../youtube/ryd.ts";
 import { registerIngestHandlers, type IngestHandlerDeps } from "./handlers/ingest.ts";
@@ -210,13 +211,31 @@ export function trackedChannelIds(db: Db): string[] {
     .map((row) => row.channel_id);
 }
 
-/** Queue an uploads poll for every tracked channel once per `ingest.channel_uploads_minutes`. */
+/**
+ * Once per `ingest.channel_uploads_minutes`, queue the RSS sweep
+ * (`ingest_channel_feeds`), which queues the API uploads poll only for the
+ * channels that need one. `force` (ingest now) queues the API poll of every
+ * tracked channel directly. Returns the jobs queued.
+ */
 export function tickChannelUploads(deps: ScheduleDeps, force = false): number {
   const intervalMs = getSettings(deps.db)["ingest.channel_uploads_minutes"] * MINUTE_MS;
   if (!isDue(deps, "channel_uploads", intervalMs, force)) {
     return 0;
   }
+  markQueued(deps, "channel_uploads");
   const channels = trackedChannelIds(deps.db);
+  if (!force) {
+    if (channels.length === 0) {
+      return 0;
+    }
+    deps.enqueue({
+      type: INGEST_CHANNEL_FEEDS_JOB,
+      payload: {},
+      priority: FEED_PRIORITY,
+      dedupe: true,
+    });
+    return 1;
+  }
   for (const channelId of channels) {
     deps.enqueue({
       type: INGEST_CHANNEL_UPLOADS_JOB,
@@ -225,7 +244,6 @@ export function tickChannelUploads(deps: ScheduleDeps, force = false): number {
       dedupe: true,
     });
   }
-  markQueued(deps, "channel_uploads");
   return channels.length;
 }
 
