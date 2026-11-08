@@ -50,6 +50,7 @@ services:
               driver: nvidia
     labels:
       com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.scope: cellar
     logging:
       driver: json-file
       options:
@@ -77,12 +78,17 @@ services:
       - no-new-privileges:true
     labels:
       com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.scope: cellar
     logging:
       driver: json-file
       options:
         max-file: "3"
         max-size: "20m"
 
+  # Scoped to "cellar": it only updates containers labelled with that scope and
+  # only stops other cellar-scoped watchtowers. An unscoped watchtower stops
+  # every other watchtower on the host at startup, so two unscoped ones (this
+  # and amber's) kept deleting each other.
   watchtower:
     container_name: cellar-watchtower
     image: containrrr/watchtower:latest
@@ -92,6 +98,9 @@ services:
       WATCHTOWER_LABEL_ENABLE: "true"
       WATCHTOWER_POLL_INTERVAL: "120"
       WATCHTOWER_ROLLING_RESTART: "true"
+      WATCHTOWER_SCOPE: cellar
+    labels:
+      com.centurylinklabs.watchtower.scope: cellar
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.docker/config.json:/config.json:ro
