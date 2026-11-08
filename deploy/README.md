@@ -13,12 +13,20 @@ kept so the setup can be rebuilt from nothing or audited later.
 ## Auto-deploy chain
 
 Push to `main` -> `build-image.yml` builds, smoke-tests and pushes
-`ghcr.io/pmaxhogan/cellar:latest` -> the `cellar-watchtower` sidecar (polling every
-120 s, label-scoped, rolling restart, cleanup on) sees the new digest and
-recreates `cellar` and `cellar-bgutil`. A change reaches the NAS about two
+`ghcr.io/pmaxhogan/cellar:latest` -> the NAS-wide `watchtower` Custom App (container
+`watchtower`; polling every 120 s, label-enable, rolling restart, cleanup on) sees the
+new digest and recreates `cellar` and `cellar-bgutil`, the two containers carrying
+`com.centurylinklabs.watchtower.enable: "true"`. A change reaches the NAS about two
 minutes after a green push, with no SSH. Watchtower reads GHCR credentials from the
-mounted `/root/.docker/config.json` (the same login the amber and mkvid watchtowers
-use); nothing more to set up.
+mounted `/root/.docker/config.json`.
+
+That one instance updates every labelled container on the NAS (cellar, amber, mkvid,
+cameld). Do not add a watchtower service to this app (or any other): an unscoped
+watchtower stops and deletes every other watchtower when it starts, which is how the
+old per-app sidecars kept deleting each other. A fresh NAS needs the `watchtower` app
+created first; its compose is the old sidecar block (`containrrr/watchtower:latest`,
+`WATCHTOWER_CLEANUP/LABEL_ENABLE=true`, `POLL_INTERVAL=120`, `ROLLING_RESTART=true`,
+mounts `/var/run/docker.sock` and `/root/.docker/config.json:/config.json:ro`).
 
 Watchtower only swaps images. It clones the running container's environment and does
 not re-read `env_file`, so `.env` edits and compose edits need an explicit
@@ -157,8 +165,10 @@ it determines the tunnel's DNS alias `cellar.ix-cellar.svc.cluster.local`.
 ## Verifying
 
 ```bash
-# containers: cellar, cellar-bgutil, cellar-watchtower, all Up (cellar healthy)
+# containers: cellar, cellar-bgutil, both Up (cellar healthy), plus the NAS-wide
+# watchtower (exactly one watchtower container on the host)
 sudo docker ps --filter name=cellar --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+sudo docker ps --filter name=watchtower --format 'table {{.Names}}\t{{.Status}}'
 
 # liveness, from inside the container (no ports are published)
 sudo docker exec cellar curl -fsS http://127.0.0.1:8080/healthz
@@ -166,7 +176,7 @@ sudo docker exec cellar curl -fsS http://127.0.0.1:8080/healthz
 # logs
 sudo docker logs --tail 100 cellar
 sudo docker logs --tail 50 cellar-bgutil
-sudo docker logs --tail 50 cellar-watchtower
+sudo docker logs --tail 50 watchtower
 ```
 
 Then run the four curl checks in
@@ -178,7 +188,7 @@ yt-dlp/ffmpeg versions, NVENC/NVDEC, the PO-token sidecar and each account.
 ## Updating
 
 - **Application code:** merge to `main`; watchtower pulls the new `latest` within
-  about two minutes. To check: `sudo docker logs --tail 20 cellar-watchtower`.
+  about two minutes. To check: `sudo docker logs --tail 20 watchtower`.
 - **Force it now:** `sudo docker pull ghcr.io/pmaxhogan/cellar:latest && sudo midclt call -j app.redeploy cellar`.
 - **`.env` changes:** `sudo midclt call -j app.redeploy cellar` (re-reads `env_file`).
 - **Compose changes:** edit `deploy/docker-compose.nas.yml`, commit it, then push the

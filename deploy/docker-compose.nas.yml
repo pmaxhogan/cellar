@@ -11,9 +11,11 @@
 #   - no published ports; the Cloudflare tunnel reaches the service by DNS
 #     alias http://cellar.ix-cellar.svc.cluster.local:8080
 #   - the GPU is reserved exactly like the mkvid app (NVENC HEVC/H.264 + NVDEC)
-#   - watchtower mounts the Docker socket and the GHCR login: this is the owner's
-#     locked auto-deploy path (same as every sibling app on this NAS); the
-#     tradeoff is documented in SECURITY.md
+#   - auto-deploy is the NAS-wide `watchtower` Custom App (one instance for every
+#     app on this NAS; it mounts the Docker socket and the GHCR login, see
+#     SECURITY.md). This file only carries the enable label and must NOT add a
+#     watchtower service: an unscoped watchtower deletes every other watchtower
+#     on the host at startup, which is how per-app sidecars kept killing each other
 services:
   cellar:
     container_name: cellar
@@ -50,7 +52,6 @@ services:
               driver: nvidia
     labels:
       com.centurylinklabs.watchtower.enable: "true"
-      com.centurylinklabs.watchtower.scope: cellar
     logging:
       driver: json-file
       options:
@@ -78,32 +79,6 @@ services:
       - no-new-privileges:true
     labels:
       com.centurylinklabs.watchtower.enable: "true"
-      com.centurylinklabs.watchtower.scope: cellar
-    logging:
-      driver: json-file
-      options:
-        max-file: "3"
-        max-size: "20m"
-
-  # Scoped to "cellar": it only updates containers labelled with that scope and
-  # only stops other cellar-scoped watchtowers. An unscoped watchtower stops
-  # every other watchtower on the host at startup, so two unscoped ones (this
-  # and amber's) kept deleting each other.
-  watchtower:
-    container_name: cellar-watchtower
-    image: containrrr/watchtower:latest
-    restart: unless-stopped
-    environment:
-      WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_LABEL_ENABLE: "true"
-      WATCHTOWER_POLL_INTERVAL: "120"
-      WATCHTOWER_ROLLING_RESTART: "true"
-      WATCHTOWER_SCOPE: cellar
-    labels:
-      com.centurylinklabs.watchtower.scope: cellar
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /root/.docker/config.json:/config.json:ro
     logging:
       driver: json-file
       options:

@@ -48,8 +48,8 @@ as a single Docker image.
 
 Node 26, TypeScript, Fastify 5, node:sqlite, Vue 3 + PrimeVue 4, Vite,
 Playwright, vitest. yt-dlp and ffmpeg (BtbN static build) are baked into the
-image and updated in place by the app. One container plus two sidecars
-(watchtower for updates, bgutil for PO tokens). See
+image and updated in place by the app. One container plus a bgutil sidecar for
+PO tokens; the NAS-wide watchtower handles updates. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Deploying

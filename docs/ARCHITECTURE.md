@@ -2292,8 +2292,8 @@ override) -> edit per-video overrides (`PUT /api/videos/:id/overrides`).
   the required CI checks (lint, test, build, e2e) and the code-coverage rule
   (`.github/rulesets/code-coverage.json`, max drop 0.5), squash-only merges,
   delete-branch-on-merge, and arms Dependabot auto-merge.
-- Watchtower on the NAS pulls `:latest` within about 2 minutes of publish
-  (label-scoped).
+- The NAS-wide watchtower (its own Custom App, one instance for every app) pulls
+  `:latest` within about 2 minutes of publish (label-enable).
 
 ## Deployment
 
@@ -2355,13 +2355,16 @@ services:
       options: { max-size: 20m, max-file: "3" }
     depends_on:
       - bgutil
-  # sidecars (below): bgutil, cellar-watchtower
+  # sidecar (below): bgutil
 ```
 
-- Sidecars: `cellar-watchtower` (`containrrr/watchtower:latest`, `WATCHTOWER_CLEANUP=true
-  LABEL_ENABLE=true POLL_INTERVAL=120 ROLLING_RESTART=true`, mounts
-  `/var/run/docker.sock` and `/root/.docker/config.json:/config.json:ro`; the GHCR
-  login already exists on the NAS) and `bgutil` (`brainicism/bgutil-ytdlp-pot-provider`,
+- Updates: no watchtower in this compose. The NAS-wide `watchtower` Custom App
+  (`containrrr/watchtower:latest`, `WATCHTOWER_CLEANUP=true LABEL_ENABLE=true
+  POLL_INTERVAL=120 ROLLING_RESTART=true`, mounts `/var/run/docker.sock` and
+  `/root/.docker/config.json:/config.json:ro`) updates every container with the enable
+  label. Per-app sidecars were dropped on 2026-11-08: an unscoped watchtower deletes
+  every other watchtower at startup, so they kept killing each other.
+- Sidecar: `bgutil` (`brainicism/bgutil-ytdlp-pot-provider`,
   container `cellar-bgutil`, `init: true`, the PO-token provider on the internal network
   at `http://bgutil:4416`, no published ports; it runs as `3100:3100` with a read-only
   rootfs, a 64 MB tmpfs `/tmp`, `cap_drop: [ALL]` and `no-new-privileges`, verified on

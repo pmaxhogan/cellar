@@ -221,8 +221,8 @@ to verify them:
 
 Not verified beyond that: the BtbN checksum file comes from the same GitHub release as
 the archive, so the build's integrity rests on GitHub and TLS; the bgutil plugin zip has
-no published checksum at all. The sidecar images `bgutil` and `watchtower` use floating
-`latest` tags with watchtower auto-updating them, as do cellar's own images.
+no published checksum at all. The `bgutil` sidecar and the NAS-wide `watchtower` use
+floating `latest` tags; watchtower auto-updates `bgutil` along with cellar's own images.
 
 ## What is NOT protected
 
@@ -248,8 +248,9 @@ Be clear-eyed about these; none of them is fixable by cellar:
 - **Pushes to `main`, GHCR, and watchtower.** Anything that lands on `main` becomes
   the running image within about two minutes, with access to the cookie jars. Protect
   the GitHub account (2FA, branch protection once enabled) accordingly. Watchtower
-  mounts the Docker socket, which is root-equivalent on the NAS; the same pattern is
-  used for the other apps there.
+  mounts the Docker socket, which is root-equivalent on the NAS; it now runs as a
+  single NAS-wide instance (its own Custom App) shared by every app there, rather than
+  one socket-mounting sidecar per app.
 - **The NAS itself.** Anyone with root on the NAS (or `sudo` from the admin user) can
   read everything, including `.env` and the decrypted data in memory. Disk theft is
   mitigated only by whatever ZFS-level encryption the pool has; cellar adds the
@@ -271,8 +272,8 @@ Be clear-eyed about these; none of them is fixable by cellar:
 - **Use a throwaway or secondary Google account for cookies if you can.** The cookies
   authorise the whole account.
 - **Revoke shares you no longer need,** and set an expiry on one-off shares.
-- **Keep the image updated.** The compose file includes a label-scoped watchtower
-  sidecar for this.
+- **Keep the image updated.** The compose file labels `cellar` and `bgutil` for the
+  NAS-wide watchtower, which pulls new images within about two minutes.
 
 ## Out of scope
 
