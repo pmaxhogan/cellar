@@ -2310,7 +2310,9 @@ xz-utils` (xz unpacks ffmpeg updates) and copies `/opt/cellar` in. At boot the s
 copies the three binaries to `/data/bin` when absent, and the updater swaps newer
 versions in atomically. Environment: `NODE_ENV=production DATA_DIR=/data PORT=8080
 HOME=/data XDG_CACHE_HOME=/data/cache PATH=/data/bin:/opt/cellar/bin:$PATH`.
-`VOLUME ["/data", "/media"]`. `HEALTHCHECK curl -fsS http://127.0.0.1:8080/healthz`.
+`VOLUME ["/data", "/media"]`. `HEALTHCHECK --interval=30s --timeout=10s --retries=5 curl -fsS
+http://127.0.0.1:8080/healthz`: about 3 minutes of consecutive misses before "unhealthy", so a
+short host-wide stall on the NAS does not raise a false alert.
 `CMD node server/dist/index.js`. The image runs as a non-root user chosen by compose
 (`user: "3100:3100"`).
 

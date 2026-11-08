@@ -150,7 +150,11 @@ VOLUME ["/data", "/media"]
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+# Five 10s-timeout misses in a row (about 3 minutes) before "unhealthy". The NAS
+# has host-wide stalls of up to ~2.5 minutes under memory pressure that freeze
+# every container at once; with --retries=3 --timeout=5s each one flipped this
+# container unhealthy for a few seconds and raised a false alert.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=5 \
   CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
 
 CMD ["node", "server/dist/index.js"]
