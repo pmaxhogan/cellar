@@ -523,6 +523,7 @@ export type ToolRollbackRequest = z.infer<typeof ToolRollbackRequestSchema>;
 //   POST /api/videos/:id/download-now                -> 202 VideoJobResponse | 501 not_implemented
 //   POST /api/videos/:id/recheck                     -> 202 VideoJobResponse | 501 not_implemented
 //   POST /api/videos/trash                  <- TrashRequest -> 202 TrashResponse | 501
+//   POST /api/videos/quick-add              <- QuickAddRequest -> 202 QuickAddResponse | 501
 //   POST /api/videos/bulk-download/estimate <- BulkDownloadEstimateRequest -> BulkDownloadEstimate
 //   POST /api/videos/bulk-download          <- BulkDownloadRequest (JSON or form) -> application/zip
 // Query lists (`source`, `status`, `type`) accept `a=x&a=y` or `a=x,y`. Dates accept epoch ms
@@ -880,6 +881,28 @@ export const TrashRequestSchema = z.object({ ids: VideoIdListSchema });
 export type TrashRequest = z.infer<typeof TrashRequestSchema>;
 export const TrashResponseSchema = z.object({ count: z.number().int().nonnegative() });
 export type TrashResponse = z.infer<typeof TrashResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Quick add (the Quick add page). Added after the original spec; documented in
+// docs/ARCHITECTURE.md under "Videos API".
+//   POST /api/videos/quick-add <- QuickAddRequest -> 202 QuickAddResponse | 501
+// `input` is any video identifier the shared parser accepts.
+// ---------------------------------------------------------------------------
+export const QuickAddRequestSchema = z.object({ input: z.string().trim().min(1).max(2000) });
+export type QuickAddRequest = z.infer<typeof QuickAddRequestSchema>;
+export const QuickAddResponseSchema = z.object({
+  video_id: z.string(),
+  /** True when the video was not in the catalog before this call. */
+  created: z.boolean(),
+  /** True when current video or audio media is already stored. */
+  downloaded: z.boolean(),
+  /** Null until a recheck has filled the metadata in. */
+  title: z.string().nullable(),
+  channel_title: z.string().nullable(),
+  /** The download job; null when nothing was queued (already downloaded, or no handler). */
+  job_id: z.number().int().nullable(),
+});
+export type QuickAddResponse = z.infer<typeof QuickAddResponseSchema>;
 
 export const BulkDownloadEstimateRequestSchema = z.object({
   ids: VideoIdListSchema,

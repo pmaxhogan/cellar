@@ -10,6 +10,7 @@ import { computed } from "vue";
  */
 
 const PATHS: Record<string, string> = {
+  quickadd: "M13 2 4 14h7l-1 8 9-12h-7z",
   videos: "M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4",
   inspect: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14M21 21l-6-6M10 7v6M7 10h6",
   titles: "M4 6h10M4 11h7M4 18h16M14 14l3-3-3-3M11 11h6",

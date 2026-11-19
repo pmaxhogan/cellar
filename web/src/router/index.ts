@@ -2,7 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router"
 import VideosPage from "../pages/VideosPage.vue";
 
 /**
- * Videos is the landing route, so it is bundled eagerly. Every other page is a
+ * Videos is the landing route (`/`), so it is bundled eagerly. Every other page is a
  * dynamic import: the rule builder, the charts and the datatables each pull in
  * PrimeVue components nobody needs to download to look at the video list.
  *
@@ -11,6 +11,12 @@ import VideosPage from "../pages/VideosPage.vue";
  * never from the sidebar.
  */
 export const routes: RouteRecordRaw[] = [
+  {
+    path: "/quick-add",
+    name: "quick-add",
+    component: () => import("../pages/QuickAddPage.vue"),
+    meta: { title: "Quick add" },
+  },
   { path: "/", name: "videos", component: VideosPage, meta: { title: "Videos" } },
   {
     path: "/videos/:id",
@@ -120,6 +126,7 @@ export interface NavLink {
 
 /** Sidebar navigation, in display order. */
 export const NAV_LINKS: NavLink[] = [
+  { to: "/quick-add", label: "Quick add", icon: "quickadd" },
   { to: "/", label: "Videos", icon: "videos" },
   { to: "/title-changes", label: "Title changes", icon: "titles" },
   { to: "/inspect", label: "Inspect", icon: "inspect" },

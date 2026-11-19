@@ -13,6 +13,7 @@ import { toApiError } from "./routes/validate.ts";
 import { wave1bRoutes } from "./routes/wave1b.ts"; // wave1B
 import { wave2bRoutes } from "./routes/wave2b.ts"; // wave2B
 import { createRulesDeps, trashVideos } from "./domain/ruleEval.ts";
+import { quickAddVideo } from "./domain/quickAdd.ts";
 import { JobQueue } from "./jobs/queue.ts";
 import { jobRegistry } from "./jobs/types.ts";
 import { videoRoutes } from "./routes/videos.ts"; // wave2C
@@ -149,6 +150,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<CellarApp> {
     registry: jobRegistry,
     getSettings: () => getSettings(ctx.db, ctx.config),
     trashVideos: async (ids) => (await trashVideos(rulesDeps, ids)).videoIds.length,
+    quickAdd: (input) => quickAddVideo(rulesDeps, input),
   });
   // --- end wave2C routes ---
   // --- wave5A routes ---

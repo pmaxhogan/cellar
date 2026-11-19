@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NAV_LINKS, routes } from "../src/router/index.ts";
 
 const ICONS_WITH_PATHS = [
+  "quickadd",
   "videos",
   "titles",
   "inspect",
@@ -22,8 +23,7 @@ const ICONS_WITH_PATHS = [
 
 describe("router config", () => {
   it("uses the Videos page as the default route", () => {
-    expect(routes[0]?.path).toBe("/");
-    expect(routes[0]?.name).toBe("videos");
+    expect(routes.find((route) => route.path === "/")?.name).toBe("videos");
   });
 
   it("has a nav link for every named page route without a parameter, in order", () => {
@@ -35,6 +35,7 @@ describe("router config", () => {
 
   it("lists the admin pages in the spec's nav order", () => {
     expect(NAV_LINKS.map((link) => link.label)).toEqual([
+      "Quick add",
       "Videos",
       "Title changes",
       "Inspect",
@@ -84,7 +85,7 @@ describe("router config", () => {
   });
 
   it("lazy-loads every page but the landing one, and each resolves", async () => {
-    for (const route of routes.slice(1)) {
+    for (const route of routes.filter((candidate) => candidate.path !== "/")) {
       if (route.redirect !== undefined) continue;
       expect(typeof route.component).toBe("function");
       const loader = route.component as () => Promise<{ default: unknown }>;

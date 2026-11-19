@@ -2,6 +2,7 @@ import {
   BulkDownloadEstimateRequestSchema,
   BulkDownloadRequestSchema,
   DEFAULT_FILENAME_TEMPLATE,
+  QuickAddRequestSchema,
   renderFilename,
   resolveSettings,
   THUMBNAIL_VARIANTS,
@@ -13,6 +14,7 @@ import {
   VideoStatsQuerySchema,
   type ApiError,
   type BulkDownloadEstimate,
+  type QuickAddResponse,
   type ResolvedSettings,
   type TitleChangesResponse,
   type TrashResponse,
@@ -61,7 +63,7 @@ import { parseBody, parseParams, parseQuery } from "./validate.ts";
 /**
  * /api/videos: the catalog list and detail, history and stats, file streaming
  * (media with HTTP Range, captions, thumbnails, metadata), the per-video job
- * triggers, trash and bulk download, plus /api/title-changes (title history
+ * triggers, trash, quick add and bulk download, plus /api/title-changes (title history
  * across every video). Everything here sits behind Access.
  */
 
@@ -77,6 +79,12 @@ export interface VideoRoutesDeps {
    * of videos trashed. Absent: POST /videos/trash answers 501.
    */
   trashVideos?: (ids: string[]) => number | Promise<number>;
+  /**
+   * Quick add: catalog the video, pin it with a keep-forever video rule and
+   * queue its download (domain/quickAdd.ts). Absent: POST /videos/quick-add
+   * answers 501.
+   */
+  quickAdd?: (input: string) => QuickAddResponse | Promise<QuickAddResponse>;
   /** Defaults to the process-wide jobRegistry. */
   registry?: JobRegistry;
   /** Defaults to the stored settings overlaid on the registry defaults. */
@@ -218,6 +226,15 @@ export const videoRoutes: FastifyPluginAsync<VideoRoutesDeps> = async (app, opti
     }
     const count = await options.trashVideos(ids);
     const body: TrashResponse = { count };
+    return reply.code(202).send(body);
+  });
+
+  app.post("/videos/quick-add", async (request, reply) => {
+    const { input } = parseBody(QuickAddRequestSchema, request);
+    if (options.quickAdd === undefined) {
+      return notImplemented(reply, "Quick add");
+    }
+    const body: QuickAddResponse = await options.quickAdd(input);
     return reply.code(202).send(body);
   });
 

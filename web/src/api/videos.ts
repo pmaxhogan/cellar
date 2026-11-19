@@ -1,6 +1,7 @@
 import {
   BulkDownloadEstimateSchema,
   MAX_BULK_IDS,
+  QuickAddResponseSchema,
   SOURCE_KINDS,
   STATUS_VALUES,
   TrashResponseSchema,
@@ -15,6 +16,7 @@ import {
   VideoStatsResponseSchema,
   type BulkDownloadEstimate,
   type BulkKind,
+  type QuickAddResponse,
   type SourceKind,
   type VideoDetail,
   type VideoHistoryResponse,
@@ -359,6 +361,15 @@ export async function trashVideos(api: ApiClient, ids: readonly string[]): Promi
     schema: TrashResponseSchema,
   });
   return result.count;
+}
+
+/** Catalog a video, pin it to be kept forever and queue its download. */
+export function quickAddVideo(api: ApiClient, input: string): Promise<QuickAddResponse> {
+  return api.request("/api/videos/quick-add", {
+    method: "POST",
+    body: { input },
+    schema: QuickAddResponseSchema,
+  });
 }
 
 export function estimateBulkDownload(

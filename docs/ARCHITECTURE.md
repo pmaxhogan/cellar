@@ -400,7 +400,7 @@ order, and a registry of effect keys that every rule layer draws from.
   ascending = priority ascending, so a LATER rule wins). Each has a nested boolean
   condition (see "Rule AST") and a sparse set of effects.
 - `video` (highest): at most one per video id, no condition (`video_id` set). Created
-  from the Inspect page, the video detail page, and the trash action.
+  from the Inspect page, the video detail page, the trash action and Quick add.
 
 ### Effects registry (`shared/src/rules/effects.ts`)
 
@@ -936,7 +936,8 @@ A video identifier is any of `http://www.youtube.com/watch?v=ID`,
 `youtu.be/watch?v=ID&t=124&_sp=...`, a bare ID, or any similar form: also `/shorts/ID`,
 `/live/ID`, `/embed/ID`, `/v/ID`, `music.youtube.com/watch?v=ID`, `m.youtube.com`. An ID
 is 11 characters of `[A-Za-z0-9_-]`. The parser is pure, returns the normalised ID, and
-is used by the Inspect page, `GET /api/inspect`, and manual channel/video entry.
+is used by the Inspect page, `GET /api/inspect`, Quick add, and manual channel/video
+entry.
 
 ## Media pipeline (download, transcode, move, reap, versions)
 
@@ -1847,6 +1848,7 @@ Details never carry credentials (proxies are named by label only). Checks:
 | POST | `/api/videos/:id/download-now` | admin | queue a download immediately; 202 `{ job_id, deduped }` |
 | POST | `/api/videos/:id/recheck` | admin | queue a metadata recheck; 202 `{ job_id, deduped }` |
 | POST | `/api/videos/trash` | admin | `{ ids[] }`: per-video override pri 0 + immediate pri-0 sweep; 202 `{ count }` |
+| POST | `/api/videos/quick-add` | admin | `{ input }`: catalog one video by URL or id, pin it with a keep-forever `video` rule and queue its download; 202 `{ video_id, created, downloaded, title, channel_title, job_id }` (see "Videos API") |
 | POST | `/api/videos/bulk-download/estimate` | admin | `{ ids[], kind? }` -> `{ files, bytes, warn }` |
 | POST | `/api/videos/bulk-download` | admin | `{ ids[], kind?, template? }` (JSON or an HTML form post) -> streamed ZIP (store, no compression) |
 | PUT | `/api/videos/:id/overrides` | admin | `{ effects }`: set the per-video `video` rule effects; `effects: null` deletes the rule; answers the inspect response (contract) |
@@ -1986,6 +1988,20 @@ takes `{ ids }` (1 to 10,000 valid ids, deduped; JSON or a form), applies the ru
 domain's `trashVideos` (a `video` rule named "Trashed" with `reclaim_priority` 0 per id,
 keeping any other overrides, then an immediate evaluation and an immediate pri-0 sweep of
 those ids) and answers 202 `{ count }`, the number of videos trashed.
+
+**Quick add.** `POST /videos/quick-add` takes `{ input }` (any identifier the shared
+parser reads, trimmed, at most 2000 characters; 400 otherwise) and runs
+`domain/quickAdd.ts`: the video is created as a metadata-only skeleton when the catalog
+does not know it; its `video` rule, named "Quick add", is set to `include: true` and
+`reclaim_priority: -1` on top of whatever overrides it already had (so a trashed video is
+un-trashed), plus `download_accounts: any` when no account sourced the video and no
+override chose a policy, because the default `sourcing` would leave it with no cookies;
+the video is evaluated immediately; a new video gets a `recheck_batch` and, unless current
+media is already stored, a `download` job is queued, both at priority 20 and deduped. Only
+those keys are forced, so every other effect still comes from the global and custom rules.
+The call is idempotent and answers 202 `{ video_id, created, downloaded, title,
+channel_title, job_id }` (`job_id` is null when no download was queued); 501 when the
+route is not wired.
 
 **Bulk download.** `POST /videos/bulk-download/estimate` takes `{ ids, kind }` and answers
 `{ files, bytes, warn }`, where `kind` is `video` (default), `audio`, `captions` or `all`
@@ -2188,6 +2204,7 @@ compose file adds `TMPDIR=/run/ytdlp` (see "Deployment").
 
 | Page | Contents |
 | --- | --- |
+| Quick add | first in the sidebar. One field that takes the focus on load: paste a link, short link or id and press Enter (or the Add button) to `POST /api/videos/quick-add`; the field clears and keeps the focus, and each video is listed below, newest first, with a confirmation or an error. Requests run one at a time in entry order. A paste is split on whitespace: what the field already holds is added first, then every pasted link but the last, which stays in the field for Enter; a clipboard ending in a new line adds the last one too |
 | Videos | server-side datatable, FTS search (also matches a pasted channel id), filters (source, account, channel by title or id, status, location, date range), bulk select, trash icon, bulk download |
 | Title changes | every title change across the catalog (`GET /api/title-changes`), newest first: old title -> new title linking to the video, current title when it moved on again, channel, relative date (exact on hover); paged, title search, channel filter |
 | Video detail | player (`<video>` with `<track>` captions and a speed menu), metadata, history timeline, stats chart, media files, share links, per-video overrides |
